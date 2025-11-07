@@ -12,10 +12,11 @@ class Eigenstate:
         return f"<Eigenstate #index={self.index}, energy={self.energy} eV>"
     
 class BandStructure:
-    def __init__(self, name:str):
+    def __init__(self, name:str,subbands = None, bandedges = None):
         #stores eigenstates in CB or VB subband
         self.name = name
-        self.subbands = []
+        self.subbands = [] if subbands is None else subbands
+        self.bandedges = [] if bandedges is None else bandedges
     
     def add_subband(self, eigenstate:Eigenstate):
         if not isinstance(eigenstate, Eigenstate):
@@ -40,6 +41,14 @@ class BandStructure:
         
         for new_index, subband in enumerate(self.subbands):
             subband.index = new_index
+    
+    def add_bandedges(self, **edges):
+        self.bandedges.update(edges)
+
+    def remove_bandedges(self, *edge_names):
+        for n in edge_names:
+            if n in self.bandedges:
+                self.bandedges.pop(n)
 
     def __repr__(self):
         n = len(self.subbands)
@@ -48,10 +57,18 @@ class BandStructure:
         energies = ", ".join([f"{subband.energy:.4f} eV" for subband in self.subbands])
         return f"<BandStructure name={self.name}, {n} subbands: [{energies}]>"
     
+# class OpticalAbsorption:
+#     def __init__(self,polarization:np.ndarray):
+#         #stores optical absorption data
+#         self.transition_energies = None
+#         self.absorption_coefficients = None
+    
 class SimOut:
     def __init__(self, simname:str):
         #represents 1 full sim result
         self.simname = simname
+        self.electron_Fermi_level = None
+        self.hole_Fermi_level = None
         self.bands ={}
     
     def add_band(self, band):
@@ -82,7 +99,16 @@ class SimOut:
     def sort_all_bands(self,decreasing=True):
         for band in self.bands.values():
             band.sort_subbands(decreasing=decreasing)
-            
+    
+    def compute_transition_energies(self):
+        VB_mesh,CB_mesh = np.meshgrid(self.bands['VB'].get_energies(),self.bands['CB'].get_energies())
+        transition_energies = CB_mesh - VB_mesh
+        return transition_energies
+    
+    # def plot_probabilities(self, band_name:str):
+
+
+
     def __repr__(self):
         lines = [f"<SimOut simname={self.simname}>"]
         if not self.bands:
@@ -94,3 +120,4 @@ class SimOut:
             else:
                 lines.append(f" {name}: No subbands available")
         return "\n".join(lines)
+    

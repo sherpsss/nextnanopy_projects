@@ -1,0 +1,330 @@
+!TEXT
+    =========================================================================================================================
+adapting from https://www.nextnano.com/docu/nextnanoplus/tutorials/absorption_InGaAs-QW_Dumitras_PRB_2002_1D.html tutorial
+    =========================================================================================================================
+!ENDTEXT
+
+# -----------------------------------------------------
+# variables visible in templates 
+# -----------------------------------------------------
+
+$run_optics = 0    # if 1 then calculate optical absorption, if 0 the not (ListOfValues:0,1)
+
+$SELF_CONSISTENT = 1                                                  
+
+$temperature = 100.0                                                   # temperature of the system (DisplayUnit:K)
+
+$w_well = 6.0                                                         # width of In(0.2)Ga(0.8)As well           (DisplayUnit:nm)
+$w_barrier = 10.0                                                        # width of GaAs barrier                  (DisplayUnit:nm)
+
+$Al_alloy = 0.48        # Al content in AlInAas alloy (DisplayUnit:mole fraction)
+$In_alloy = 0.52 #In content in InGaAs
+
+$GRID_BUFFER =6.0
+
+$FINE_RES = 0.25                                                    # grid spacing around the quantum well (DisplayUnit:nm)
+$COARSE_RES = 2.0                                                    # grid spacing away from the quantum well (DisplayUnit:nm)
+
+$eigen_e = 4                                                         # number of eigenvalues to be calculated for conduction bands at each k point
+$eigen_v = 10                                                         # number of eigenvalues to be calculated for valence bands at each k point
+
+$opt_broadening = 1e-3                                                 # energy broadening of the optical transitions (DisplayUnit:eV)
+
+#doping variables
+$delta_donor_w = 2.0
+$donor_setback = 2.0 
+$sim_temp = 100.0 #kelvin
+#$n2d = 1
+$conccc = 2.0E18
+$impurity_name = "ZninAlAs"
+
+# -----------------------------------------------------
+# variables not visible in templates
+# -----------------------------------------------------
+# Defined
+
+$material_substrate = "InP"                                        # material of the substrate               (DoNotShowInUserInterface)
+$material_barrier = "Al(x)In(1-x)As"                                             # material of the barriers                (DoNotShowInUserInterface) 
+$material_well = "In(x)Ga(1-x)As"                                      # material of the quantum wells           (DoNotShowInUserInterface) 
+
+
+$x_min = 0.0
+$x_max = 2*$w_barrier + $w_well
+# Derived
+
+#$w_total = $w_well + 2 * $w_barrier                                    # the well width + barrier width (DoNotShowInUserInterface)
+#$x_center_shift = -$w_total / 2                                        # center coordinate of well will be set to zero (DoNotShowInUserInterface)
+#
+#$x_min         = $x_center_shift                                       # left boundary of simulation region   (DoNotShowInUserInterface)
+#$x_well_left   = $x_center_shift + $w_barrier                          # left interface of the QW             (DoNotShowInUserInterface)
+#$x_well_right  = $x_center_shift + $w_barrier + $w_well                # right interface of the QW            (DoNotShowInUserInterface)
+#$x_max         = $x_center_shift + $w_barrier + $w_well + $w_barrier   # right boundary of simulation region  (DoNotShowInUserInterface)
+
+# -----------------------------------------------------
+# Simulation
+# -----------------------------------------------------
+
+#run{ 
+##    strain{ }   
+#    poisson{ }
+#    quantum{ }
+#    !IF($run_optics)
+#        quantum_optics{ }
+#    !ENDIF
+#}
+
+run{ 
+    !IF($SELF_CONSISTENT)
+        poisson{ }
+        quantum_poisson{ iterations = 21 }  # residuals don�t change so much after iteration = 21
+    !ELSE
+        quantum{ }
+    !ENDIF
+
+    !IF($run_optics)
+        quantum_optics{}
+    !ENDIF
+}
+
+
+global{ 
+    simulate1D{ }
+    crystal_zb{ 
+        x_hkl = [1, 0, 0]
+        y_hkl = [0, 1, 0]
+    }
+    substrate{ name =  $material_substrate  
+    }
+    temperature = $temperature             
+}
+
+impurities{ #assume all donors-pytpe (not specifying which donor)
+    acceptor{              # p-type
+        name = "genericacceptor"
+        energy = -100.0  # all ionized; want to force all to be ionized
+        degeneracy = 4  # degeneracy of energy levels, 2 for n-type, 4 for p-type
+    }
+    donor{
+        name = "genericdonor"
+        energy = -100.0
+        degeneracy = 2
+    }
+    acceptor{
+        name = "ZninAlAs"
+        energy = 0.01
+        degeneracy = 4
+    }
+
+}
+
+
+contacts{ 
+    fermi{ 
+        name = fermi_contact
+        bias = 0.0
+    }
+}
+
+structure{ 
+    output_material_index{ }
+    output_alloy_composition{ }
+    output_region_index{ }
+    
+    region{ 
+        ternary_constant{ name = "Al(x)In(1-x)As" alloy_x=$Al_alloy}
+        contact{ name = fermi_contact }
+        everywhere{ }
+    }
+    
+    region{ 
+        line{ x = [$w_barrier, $w_barrier + $w_well] }
+        ternary_constant{ 
+            name = "In(x)Ga(1-x)As"
+            alloy_x = $In_alloy
+        }
+    }
+
+#    #add modulation doping
+    region{
+        line{ 
+            x = [$w_barrier-$donor_setback-$delta_donor_w,$w_barrier-$donor_setback]       
+        }
+        ternary_constant{ name = "Al(x)In(1-x)As" alloy_x=$Al_alloy        }
+        doping{ 
+            constant{ 
+                name = $impurity_name # properties of this impurity type have to be specified below
+                conc = $conccc        # 1 * 10^17 cm^-3
+            }
+        }
+    }
+    region{
+        line{ 
+            x = [$w_barrier+$w_well+$donor_setback,$w_barrier+$w_well+$donor_setback+$delta_donor_w]        
+        }
+       ternary_constant{ name = "Al(x)In(1-x)As" alloy_x=$Al_alloy        }
+        doping{ 
+            constant{ 
+                name = $impurity_name # properties of this impurity type have to be specified below
+                conc = $conccc        # 1 * 10^17 cm^-3
+            }
+        }
+    }
+}
+
+#grid{ 
+#    xgrid{ 
+#        line{  pos = $x_min             spacing = $spacing_coarse }
+#        line{  pos = $x_well_left       spacing = $spacing_fine }
+#        line{  pos = $x_well_right      spacing = $spacing_fine }
+#        line{  pos = $x_max             spacing = $spacing_coarse }
+#    }
+#}
+
+grid{                      # this group is required in every input file
+    xgrid{                 # grid in x direction
+        line{ 
+            pos = 0.0      # start of device at x = 0.0nm
+            spacing = $COARSE_RES  # grid spacing 1.0nm
+        }  
+        line{                                  
+            pos = $w_barrier - $GRID_BUFFER     # 
+            spacing = $FINE_RES  # 
+        }
+        line{                                  
+            pos = $w_barrier + $w_well + $GRID_BUFFER     # 
+            spacing = $FINE_RES  # 
+        }
+
+        line{                                  
+            pos = $w_barrier + $w_well + $w_barrier    # 
+            spacing = $COARSE_RES  # 
+        }
+    }
+}
+
+
+classical{ 
+    Gamma{ }
+    HH{ }
+    LH{ }
+    SO{ }
+    output_bandedges{ averaged = no }
+    output_bandgap{ averaged = no }
+    output_carrier_densities{ }
+}
+
+#strain{ 
+#    pseudomorphic_strain{ }
+#}
+
+#poisson{ 
+#    between_fermi_levels{ }
+#    output_potential{ }
+#    output_electric_field{ }
+#}
+
+poisson{ 
+    debuglevel = 2
+    !IF($SELF_CONSISTENT)
+        charge_neutral{ }
+    !ELSE
+        between_fermi_levels{ }
+    !ENDIF
+    
+    newton_solver{ 
+        search_steps = 50
+    }
+    output_potential{ }
+}
+
+
+quantum { 
+    region{ 
+        name = "quantum_region"
+        x = [$x_min, $x_max]
+        no_density = no
+        boundary{ x = neumann }
+        kp_8band{ 
+            num_electrons = $eigen_e
+            num_holes     = $eigen_v   
+            
+            k_integration{ 
+                relative_size = 0.2
+#                force_k0_subspace=yes
+                num_points = 10
+                num_subpoints = 5
+
+            }
+            kp_parameters{ 
+                use_Luttinger_parameters = yes
+                from_6band_parameters = yes
+                evaluate_S = yes
+                approximate_kappa = yes
+            }
+            correct_electron_gfactor = 0.0
+            avoid_spurious = yes
+        }
+        
+#        overlap_integrals{
+#            Gamma_HH{}
+#            Gamma_LH{}
+#            output_transition_energies=yes 
+#            output_matrix_elements=no
+#        }
+        transition_energies{
+            KP8{}
+        }
+        output_wavefunctions{ 
+            max_num = $eigen_e + $eigen_v
+            amplitudes = no
+            probabilities = yes
+            all_k_points = no
+#            include_energies_in_shifted_files=no
+        }
+    }
+}
+
+optics{ 
+    !IF($run_optics)
+        quantum_spectra{ 
+            name = "quantum_region"
+            
+            polarization{ name = "TM_z"  re = [1, 0, 0] }
+            polarization{ name = "TE_y"  re = [0, 1, 0] }
+            
+            interband   = yes
+            intraband   = yes      
+            k_integration{ 
+                relative_size = 0.2
+                num_points    = 5
+                num_integrationpoints = 50
+                force_k0_subspace=no
+            }  
+            
+            energy_threshold  = 1e-8                        # (eV)      
+            min_energy  = 0.7                               # (eV)
+            max_energy  = 1.5                               # (eV)
+            energy_resolution = 5e-4                        # (eV)
+            energy_broadening_lorentzian = $opt_broadening  # (eV)
+            
+            output_spectra{ 
+                spectra_over_energy         = yes
+                spectra_over_wavelength     = yes
+                spectra_over_frequency      = no
+                spectra_over_wavenumber     = no
+            }
+        }
+    !ENDIF
+}
+
+# Bowing parameter of the Average valence band energy is set to zero
+# to match expected band offsets
+#database{ 
+#    ternary_zb { 
+#        name = "In(x)Ga(1-x)As"
+#        valence_bands{ 
+#            bandoffset = 0 
+#        }
+#    }
+#}
+

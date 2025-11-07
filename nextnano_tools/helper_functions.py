@@ -16,6 +16,8 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
     Gamma = band_edge.variables['Gamma']
     HH = band_edge.variables['HH']
     LH = band_edge.variables['LH']
+    sim.electron_Fermi_level = np.mean(band_edge.variables['electron_Fermi_level'].value)
+    sim.hole_Fermi_level = np.mean(band_edge.variables['hole_Fermi_level'].value)
 
     # Define paths for quantum simulation results
     quantum_sims_path = os.path.join(outpath, bias, quantum_region)
