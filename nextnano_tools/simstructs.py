@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt 
 
 class Eigenstate:
     def __init__(self, index:int,energy:float, prob_dist:np.ndarray):
@@ -11,12 +12,20 @@ class Eigenstate:
     def __repr__(self):
         return f"<Eigenstate #index={self.index}, energy={self.energy} eV>"
     
+class BandEdge:
+    def __init__(self, name, energy, x):
+        #stores band edge data for specific edge (e.g., Gamma, HH, LH)
+        self.name = name
+        self.energy = energy  #single energy value
+        self.x = x  #x coords
+    
 class BandStructure:
-    def __init__(self, name:str,subbands = None, bandedges = None):
+    def __init__(self, name:str,subbands = None, bandedges = None,x=None):
         #stores eigenstates in CB or VB subband
         self.name = name
         self.subbands = [] if subbands is None else subbands
         self.bandedges = [] if bandedges is None else bandedges
+        self.x = x  # spatial axis in nm
     
     def add_subband(self, eigenstate:Eigenstate):
         if not isinstance(eigenstate, Eigenstate):
@@ -42,13 +51,67 @@ class BandStructure:
         for new_index, subband in enumerate(self.subbands):
             subband.index = new_index
     
-    def add_bandedges(self, **edges):
-        self.bandedges.update(edges)
+    def add_bandedge(self, edge:BandEdge):
+            if not isinstance(edge, BandEdge):
+                raise TypeError("bandedges must be instances of BandEdge class")
+            self.bandedges.append(edge)
 
-    def remove_bandedges(self, *edge_names):
-        for n in edge_names:
-            if n in self.bandedges:
-                self.bandedges.pop(n)
+    # def remove_bandedge(self, *edge_names):
+    #     for n in edge_names:
+    #         if n in self.bandedges:
+    #             self.bandedges.pop(n)
+    
+    def define_x(self, x:np.ndarray): #if I don't define when I pass it in
+        self.x = x
+
+    def plot_band(self, scale=0.05, color=None, ax=None, show=True):
+        """
+        Plot band edges and subband probabilities.
+
+        Parameters
+        ----------
+        scale : float
+            Vertical scaling for normalized probability amplitudes
+        color : str
+            Optional color for this band
+        ax : matplotlib.axes.Axes
+            Optional existing axes to plot on
+        show : bool
+            Whether to call plt.show() automatically
+        """
+
+        if self.x is None:
+            raise ValueError("Spatial axis x is not defined for this BandStructure.")
+        
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(8, 5))
+        color = color or ('dodgerblue' if self.name == 'CB' else 'crimson')
+
+        # --- Band edges ---
+        for edge in self.bandedges:
+            ax.plot(edge.x, edge.energy, label=f"{edge.name}")
+
+        # --- Subbands ---
+        for subband in self.subbands:
+            E = subband.energy
+
+            #first plot the energy
+            ax.plot(self.x, np.full_like(self.x, E), ls='--', label = f'{self.name} subband {subband.index}')
+
+            # then plot the eigenfunction
+            psi2 = subband.probab_dist
+            psi2_norm = psi2 / np.max(np.abs(psi2)) if np.max(np.abs(psi2)) != 0 else psi2
+            ax.plot(self.x, psi2_norm * scale + E, color=color, lw=1.2)
+                # ax.text(x[-1]*1.01, E, f"{self.name}{subband.index+1}", color=color, fontsize=8, va='center')
+
+        ax.set_xlabel("Position (nm)")
+        ax.set_ylabel("Energy (eV)")
+        ax.set_title(f"{self.name} band structure")
+        ax.legend(loc="best")
+        if show:
+            plt.tight_layout()
+            plt.show()
+        return ax
 
     def __repr__(self):
         n = len(self.subbands)
@@ -106,7 +169,32 @@ class SimOut:
         return transition_energies
     
     # def plot_probabilities(self, band_name:str):
+    def plot_all_bands(self, scale=0.05, colors=None, show=True):
+        """
+        Plot all band structures and their subband wavefunctions in one figure.
 
+        Parameters
+        ----------
+        scale : float
+            Scaling factor for probability amplitudes.
+        colors : dict
+            Optional dict like {'CB': 'blue', 'VB': 'red'}.
+        show : bool
+            Whether to call plt.show().
+        """
+        colors = colors or {'CB': 'dodgerblue', 'VB': 'crimson'}
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for name, band in self.bands.items():
+            band.plot_band(scale=scale, color=colors.get(name, None), ax=ax, show=False)
+
+        ax.set_title(f"Band Structures — {self.simname}")
+        ax.legend()
+        if show:
+            plt.tight_layout()
+            plt.show()
+        return ax
+    
 
 
     def __repr__(self):
