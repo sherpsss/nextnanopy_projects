@@ -1,7 +1,46 @@
 import os
 import numpy as np
 import nextnanopy as nn
-from .simstructs import SimOut, BandStructure,Eigenstate,BandEdge
+from .simstructs import SimOut, BandStructure,Eigenstate,BandEdge,OpticalAbsorption,Spectrum
+
+def build_optical_absorption(optics_path,absorption_files): #built to assume only eV input for now
+    absorption_obj = OpticalAbsorption()
+    for f in absorption_files:
+        filepath = os.path.join(optics_path, f)
+        # try:
+    data = nn.DataFile(filepath, "nextnano++")
+
+    photonin = data.coords['Energy'].value
+    alpha = data.variables['Absorption_Coefficient'].value
+    # if x_var is None or alpha_var is None:
+    #     continue
+
+    # Infer polarization and axis
+    fname = f.lower()
+    pol = "TE" if "te" in fname else "TM" if "tm" in fname else "unknown"
+    axis = None
+    if "_x_" in fname:
+        axis = "x"
+    elif "_y_" in fname:
+        axis = "y"
+    elif "_z_" in fname:
+        axis = "z"
+
+    # Build Spectrum object
+    spectrum = Spectrum(
+        x=photonin,
+        y=alpha,
+        x_unit='eV',
+        polarization=pol,
+        axis=axis
+    )
+
+    absorption_obj.add_spectrum(spectrum)
+
+        # except Exception as e:
+            # print(f"Warning: Could not load absorption file '{f}': {e}")
+    return absorption_obj
+                    
 
 def build_output(outpath, quantum_region, quantum_band, quantum_band_interactions, bias, VB_cutoff, well_w):
     """
@@ -41,18 +80,6 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
 
     #load in energies and then use those energy indices to load in probabilities so I can have the non-shifted probabilities
 
-    # # Identify non-degenerate eigenenergies and classify by band type (VB vs CB)
-    # for psi in probabilities.variables:
-    #     parts = psi.name.split('_')
-    #     if len(parts) > 1 and parts[-1].isdigit():
-    #         num = int(parts[-1])
-    #         if num % 2 == 1 and 'E' in psi.name:  # odd-numbered, energy-like variable
-    #             energy = np.mean(psi.value)
-    #             if energy < VB_cutoff:
-    #                 non_degen_E[num] = ('VB', energy)
-    #             else:
-    #                 non_degen_E[num] = ('CB', energy)
-
     #skip every other eigenvalue to get non-degenerate states
     degen_energies = energy_spectrum.variables['Energy'].value
     non_degen_inds = list(range(1, len(degen_energies), 2)) #adding 1 to get the ususal way subbands are indexed
@@ -76,5 +103,20 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
     # Add band structures to simulation output
     sim.add_band(CB)
     sim.add_band(VB)
+
+        # --- Optical absorption spectra ---
+    optics_path = os.path.join(outpath, bias, "OpticsQuantum", "quantum_region")
+
+    if os.path.isdir(optics_path):
+        absorption_files = [
+            f for f in os.listdir(optics_path)
+            if "absorption_coeff_spectrum" in f.lower() and "eV" in f.lower() and f.endswith(".dat")
+        ]
+
+
+        if absorption_files:
+            absorption_populated = build_optical_absorption(optics_path,absorption_files)
+
+            sim.optical_absorption = absorption_populated
 
     return sim

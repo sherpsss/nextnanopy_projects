@@ -37,7 +37,7 @@ class BandStructure:
     
     def sort_subbands(self,decreasing=True):
         self.subbands.sort(key=lambda x: x.energy, reverse=decreasing)
-        for new_index, subband in enumerate(self.subbands):
+        for new_index, subband in enumerate(self.subbands,start=1):
             subband.index = new_index   # Update index to reflect new order
     
     def remove_subband(self, subband=None,index=None):
@@ -125,6 +125,85 @@ class BandStructure:
 #         #stores optical absorption data
 #         self.transition_energies = None
 #         self.absorption_coefficients = None
+
+class Spectrum:
+    def __init__(self, x, y, x_unit="eV", y_label="Absorption (cm⁻¹)",
+                 polarization=None, axis=None, bias=None, well_width=None):
+        self.x = np.array(x)
+        self.y = np.array(y)
+        self.x_unit = x_unit
+        self.y_label = y_label
+        self.polarization = polarization
+        self.axis = axis
+
+    def plot(self, ax=None, show=True, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(6, 4))
+        label = f"{self.polarization}-{self.axis}" if self.axis else self.polarization
+        ax.plot(self.x, self.y, label=label, **kwargs)
+        xlabel = "Photon Energy (eV)" if self.x_unit.lower() == "ev" else "Wavelength (nm)"
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(self.y_label)
+        ax.legend()
+        if show:
+            plt.tight_layout()
+            plt.show()
+        return ax
+
+    def normalize(self):
+        """Return a normalized copy (max=1)."""
+        y_norm = self.y / np.max(self.y)
+        return Spectrum(self.x, y_norm, x_unit=self.x_unit,
+                        y_label=self.y_label, polarization=self.polarization,
+                        axis=self.axis, bias=self.bias, well_width=self.well_width)
+
+    def subset(self, xmin=None, xmax=None):
+        """Return a subset between xmin and xmax."""
+        mask = np.ones_like(self.x, dtype=bool)
+        if xmin is not None:
+            mask &= self.x >= xmin
+        if xmax is not None:
+            mask &= self.x <= xmax
+        return Spectrum(self.x[mask], self.y[mask],
+                        x_unit=self.x_unit, y_label=self.y_label,
+                        polarization=self.polarization, axis=self.axis,
+                        bias=self.bias, well_width=self.well_width)
+
+    def __repr__(self):
+        pol = f"{self.polarization}-{self.axis}" if self.axis else self.polarization
+        return f"<Spectrum {pol}, {len(self.x)} points, x_unit={self.x_unit}>"
+
+
+class OpticalAbsorption:
+    def __init__(self):
+        self.spectra = {}  # dict[str, Spectrum]
+
+    def add_spectrum(self, spectrum: Spectrum):
+        if not isinstance(spectrum, Spectrum):
+            raise TypeError("spectrum must be a Spectrum instance")
+        label = f"{spectrum.polarization}-{spectrum.axis}" if spectrum.axis else spectrum.polarization
+        self.spectra[label] = spectrum
+
+    def get_spectrum(self, label: str):
+        return self.spectra[label]
+
+    def plot(self, labels=None, ax=None, show=True):
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(7, 4))
+        if labels is None:
+            labels = list(self.spectra.keys())
+        for label in labels:
+            self.spectra[label].plot(ax=ax, show=False)
+        ax.legend(title="Polarization")
+        if show:
+            plt.tight_layout()
+            plt.show()
+        return ax
+
+    def __repr__(self):
+        return f"<OpticalAbsorption: {list(self.spectra.keys())}>"
+
+
     
 class SimOut:
     def __init__(self, simname:str):
@@ -133,6 +212,7 @@ class SimOut:
         self.electron_Fermi_level = None
         self.hole_Fermi_level = None
         self.bands ={}
+        self.optical_absorption = OpticalAbsorption() #only included in some sims
     
     def add_band(self, band):
         #pass in either bandstructure type or just new string type
@@ -167,6 +247,9 @@ class SimOut:
         VB_mesh,CB_mesh = np.meshgrid(self.bands['VB'].get_energies(),self.bands['CB'].get_energies())
         transition_energies = CB_mesh - VB_mesh
         return transition_energies
+    
+    def add_absorption_spectrum(self, photon_energy: np.ndarray, absorption: np.ndarray, polarization: str = None):
+        self.optical_absorption.add_spectrum(photon_energy, absorption, polarization)
     
     # def plot_probabilities(self, band_name:str):
     def plot_all_bands(self, scale=0.05, colors=None, show=True):

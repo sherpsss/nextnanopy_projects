@@ -15,7 +15,7 @@ $SELF_CONSISTENT = 1
 $temperature = 100.0                                                   # temperature of the system (DisplayUnit:K)
 
 $w_well = 6.0                                                         # width of In(0.2)Ga(0.8)As well           (DisplayUnit:nm)
-$w_barrier = 14.0                                                        # width of GaAs barrier                  (DisplayUnit:nm)
+$w_barrier = 12.0                                                        # width of GaAs barrier                  (DisplayUnit:nm)
 
 $Al_alloy = 0.48        # Al content in AlInAas alloy (DisplayUnit:mole fraction)
 $In_alloy = 0.52 #In content in InGaAs
