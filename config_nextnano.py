@@ -6,16 +6,25 @@ print(f'The nextnanopy config file is stored in: {nn.config.fullpath}')
 #++++++++++++++++++++++++++++++++++++++++++++++++++
 # Specify your license folder
 #++++++++++++++++++++++++++++++++++++++++++++++++++
-path_license         = r"C:\Users\splatt\Documents\nextnano\activated_license"
+user_loaner = 'sp6497_a'
+user = user_loaner
+if user==user_loaner:
+    path_license = r"C:\Users\sp6497_a\nextnano_outs\license_activated"
+else:
+    path_license = r"C:\Users\splatt\Documents\nextnano\activated_license"
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++
 # Specify your output folder
 #++++++++++++++++++++++++++++++++++++++++++++++++++
-path_nextnano_output = r"C:\Users\splatt\Documents\nextnano\Output"            
+if user == user_loaner:
+    path_nextnano_output = r"C:\Users\sp6497_a\nextnano_outs\Output"
+else:
+    path_nextnano_output = r"C:\Users\splatt\Documents\nextnano\Output"            
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++
 # Specify your nextnano installation folder
 #++++++++++++++++++++++++++++++++++++++++++++++++++
+
 path_nextnano        = r"C:\Program Files\nextnano\2025_09_18"           # nextnano++, nextnano3 and nextnano.MSB software            
 
 

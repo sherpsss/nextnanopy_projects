@@ -16,7 +16,7 @@ class BandEdge:
     def __init__(self, name, energy, x):
         #stores band edge data for specific edge (e.g., Gamma, HH, LH)
         self.name = name
-        self.energy = energy  #single energy value
+        self.energy = energy  #energy profile
         self.x = x  #x coords
     
 class BandStructure:
@@ -48,7 +48,7 @@ class BandStructure:
         else:
             raise ValueError("must provide subband object or index to remove")
         
-        for new_index, subband in enumerate(self.subbands):
+        for new_index, subband in enumerate(self.subbands,start=1):
             subband.index = new_index
     
     def add_bandedge(self, edge:BandEdge):
@@ -61,56 +61,102 @@ class BandStructure:
     #         if n in self.bandedges:
     #             self.bandedges.pop(n)
     
+    def calc_intersubband_transitions(self, upward_only=False):
+        Ei, Ef = np.meshgrid(self.get_energies(), self.get_energies())
+        T = Ef - Ei
+        if upward_only:
+            mask = np.triu(np.ones_like(T, dtype=bool), k=1)
+            return T[mask], mask
+        return T
+
+    
     def define_x(self, x:np.ndarray): #if I don't define when I pass it in
         self.x = x
 
-    def plot_band(self, scale=0.05, color=None, ax=None, show=True):
+    def plot_band(self, scale=0.05, color=None, ax=None, show=True, show_grid=False,title_diff=None,normalize_y=False):
         """
-        Plot band edges and subband probabilities.
+        Plot band edges and subband probability distributions.
 
         Parameters
         ----------
         scale : float
-            Vertical scaling for normalized probability amplitudes
+            Vertical scale factor for normalized probability amplitudes.
         color : str
-            Optional color for this band
+            Optional color for subband wavefunctions.
         ax : matplotlib.axes.Axes
-            Optional existing axes to plot on
+            Optional Axes object to plot into.
         show : bool
-            Whether to call plt.show() automatically
+            Whether to call plt.show().
+        normalize_y : bool
+            If True, shift all energies so that 0 = minimum band-edge energy.
+            (Useful for comparing band structures on a shared vertical scale.)
         """
 
         if self.x is None:
             raise ValueError("Spatial axis x is not defined for this BandStructure.")
-        
+
         if ax is None:
             fig, ax = plt.subplots(figsize=(8, 5))
+
         color = color or ('dodgerblue' if self.name == 'CB' else 'crimson')
 
-        # --- Band edges ---
+        # --------------------------------------------
+        # Compute energy offset if normalize_y=True
+        # --------------------------------------------
+        if normalize_y:
+            # collect all band edge energies for this band
+            all_edge_vals = []
+            for edge in self.bandedges:
+                all_edge_vals.extend(edge.energy)
+
+            if len(all_edge_vals) == 0:
+                raise ValueError("normalize_y=True requested but no band edges exist.")
+
+            E_min = np.min(all_edge_vals)
+        else:
+            E_min = 0.0
+
+        # --------------------------------------------
+        # Plot band edges (with optional normalization)
+        # --------------------------------------------
         for edge in self.bandedges:
-            ax.plot(edge.x, edge.energy, label=f"{edge.name}")
+            y = edge.energy - E_min
+            ax.plot(edge.x, y, label=f"{edge.name}")
 
-        # --- Subbands ---
+        # --------------------------------------------
+        # Plot each eigenstate energy + wavefunction
+        # --------------------------------------------
         for subband in self.subbands:
-            E = subband.energy
+            E = subband.energy - E_min
 
-            #first plot the energy
-            ax.plot(self.x, np.full_like(self.x, E), ls='--', label = f'{self.name} subband {subband.index}')
+            # plot energy as dashed horizontal line
+            ax.plot(self.x, np.full_like(self.x, E), ls='--',
+                    label=f'{self.name} {subband.index}')
 
-            # then plot the eigenfunction
+            # probability distribution
             psi2 = subband.probab_dist
             psi2_norm = psi2 / np.max(np.abs(psi2)) if np.max(np.abs(psi2)) != 0 else psi2
             ax.plot(self.x, psi2_norm * scale + E, color=color, lw=1.2)
-                # ax.text(x[-1]*1.01, E, f"{self.name}{subband.index+1}", color=color, fontsize=8, va='center')
+
+        if normalize_y:
+            ax.set_ylabel("Energy (normalized)")
+        else:
+            ax.set_ylabel("Energy (eV)")
 
         ax.set_xlabel("Position (nm)")
-        ax.set_ylabel("Energy (eV)")
-        ax.set_title(f"{self.name} band structure")
+        if title_diff is not None:
+            ax.set_title(title_diff)
+        else:
+            ax.set_title(f"{self.name} band structure")
         ax.legend(loc="best")
+
         if show:
             plt.tight_layout()
             plt.show()
+        
+        if show_grid:
+            plt.grid()
+
         return ax
 
     def __repr__(self):
@@ -243,10 +289,21 @@ class SimOut:
         for band in self.bands.values():
             band.sort_subbands(decreasing=decreasing)
     
-    def compute_transition_energies(self):
-        VB_mesh,CB_mesh = np.meshgrid(self.bands['VB'].get_energies(),self.bands['CB'].get_energies())
-        transition_energies = CB_mesh - VB_mesh
-        return transition_energies
+    def calc_interband_transitions(self):
+        """
+        Compute interband transition energies between VB and CB.
+
+        Returns
+        -------
+        transitions : 2D numpy array
+            transitions[i, j] = CB_i - VB_j
+        """
+        if 'CB' not in self.bands or 'VB' not in self.bands:
+            raise ValueError("Both CB and VB bands must exist for interband transitions.")
+
+        VB_mesh, CB_mesh = np.meshgrid(self.bands['VB'].get_energies(), self.bands['CB'].get_energies())
+        return CB_mesh - VB_mesh
+
     
     def add_absorption_spectrum(self, photon_energy: np.ndarray, absorption: np.ndarray, polarization: str = None):
         self.optical_absorption.add_spectrum(photon_energy, absorption, polarization)
