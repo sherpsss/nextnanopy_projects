@@ -7,38 +7,38 @@ def build_optical_absorption(optics_path,absorption_files): #built to assume onl
     absorption_obj = OpticalAbsorption()
     for f in absorption_files:
         filepath = os.path.join(optics_path, f)
-        # try:
-    data = nn.DataFile(filepath, "nextnano++")
+            # try:
+        data = nn.DataFile(filepath, "nextnano++")
 
-    photonin = data.coords['Energy'].value
-    alpha = data.variables['Absorption_Coefficient'].value
-    # if x_var is None or alpha_var is None:
-    #     continue
+        photonin = data.coords['Energy'].value
+        alpha = data.variables['Absorption_Coefficient'].value
+        # if x_var is None or alpha_var is None:
+        #     continue
 
-    # Infer polarization and axis
-    fname = f.lower()
-    pol = "TE" if "te" in fname else "TM" if "tm" in fname else "unknown"
-    axis = None
-    if "_x_" in fname:
-        axis = "x"
-    elif "_y_" in fname:
-        axis = "y"
-    elif "_z_" in fname:
-        axis = "z"
+        # Infer polarization and axis
+        fname = f.lower()
+        pol = "TE" if "te" in fname else "TM" if "tm" in fname else "unknown"
+        axis = None
+        if "_x_" in fname:
+            axis = "x"
+        elif "_y_" in fname:
+            axis = "y"
+        elif "_z_" in fname:
+            axis = "z"
 
-    # Build Spectrum object
-    spectrum = Spectrum(
-        x=photonin,
-        y=alpha,
-        x_unit='eV',
-        polarization=pol,
-        axis=axis
-    )
+        # Build Spectrum object
+        spectrum = Spectrum(
+            x=photonin,
+            y=alpha,
+            x_unit='eV',
+            polarization=pol,
+            axis=axis
+        )
 
-    absorption_obj.add_spectrum(spectrum)
+        absorption_obj.add_spectrum(spectrum)
 
-        # except Exception as e:
-            # print(f"Warning: Could not load absorption file '{f}': {e}")
+            # except Exception as e:
+                # print(f"Warning: Could not load absorption file '{f}': {e}")
     return absorption_obj
                     
 
@@ -106,13 +106,22 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
 
         # --- Optical absorption spectra ---
     optics_path = os.path.join(outpath, bias, "OpticsQuantum", "quantum_region")
+    print(optics_path)
 
     if os.path.isdir(optics_path):
-        absorption_files = [
-            f for f in os.listdir(optics_path)
-            if "absorption_coeff_spectrum" in f.lower() and "eV" in f.lower() and f.endswith(".dat")
-        ]
+        print("reached optics path")
+        all_files = os.listdir(optics_path)
+        print(all_files)
+        absorption_files =[]
+        for f in all_files:
+            lower_case = f.lower()
+            print(lower_case)
+            rules = ["absorption_coeff_spectrum" in lower_case,"ev" in lower_case,lower_case.endswith(".dat")]
+            print(rules)
+            if all(rules):
+                absorption_files.append(f)
 
+        print(absorption_files)
 
         if absorption_files:
             absorption_populated = build_optical_absorption(optics_path,absorption_files)

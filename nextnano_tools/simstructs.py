@@ -69,11 +69,57 @@ class BandStructure:
             return T[mask], mask
         return T
 
+    def display_intersubband_transitions(self, upward_only=False, sort_by_deltaE=None):
+        """
+        Pretty-print intersubband transition table.
+
+        Parameters
+        ----------
+        upward_only : bool
+            If True, include only transitions where j > i.
+        sort_by_deltaE : None, "ascending", or "descending"
+            If provided, sorts flattened transitions by ΔE.
+        """
+
+        T = self.calc_intersubband_transitions(upward_only=False)
+        n = T.shape[0]
+
+        # -------------------------------------------------
+        # Collect all transitions into a list
+        # -------------------------------------------------
+        transitions = []
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue  # skip zero ΔE transitions
+                if upward_only and j <= i:
+                    continue
+                transitions.append((i+1, j+1, T[i, j]))  # store 1-based indices
+
+        # -------------------------------------------------
+        # Optional sorting
+        # -------------------------------------------------
+        if sort_by_deltaE is not None:
+            reverse_flag = (sort_by_deltaE == "descending")
+            transitions.sort(key=lambda x: x[2], reverse=reverse_flag)
+
+        # -------------------------------------------------
+        # Print nicely
+        # -------------------------------------------------
+        print(f"\nIntersubband transition energies — {self.name}")
+        print("-----------------------------------------------------")
+        print(" i → j | ΔE (eV)")
+        print("-----------------------------------------------------")
+
+        for i, j, dE in transitions:
+            print(f" {i:2d} → {j:2d} | {dE: .4f}")
+
+        print("-----------------------------------------------------\n")
     
     def define_x(self, x:np.ndarray): #if I don't define when I pass it in
         self.x = x
 
-    def plot_band(self, scale=0.05, color=None, ax=None, show=True, show_grid=False,title_diff=None,normalize_y=False):
+    def plot_band(self, scale=0.05, fontsizebase = 18,fontsizetitle = 22,color=None, ax=None, show=True, show_legend =True, show_grid=False,title_diff=None,normalize_y=False):
         """
         Plot band edges and subband probability distributions.
 
@@ -139,16 +185,24 @@ class BandStructure:
             ax.plot(self.x, psi2_norm * scale + E, color=color, lw=1.2)
 
         if normalize_y:
-            ax.set_ylabel("Energy (normalized)")
+            ax.set_ylabel("Energy relative to Band Edge (eV)")
         else:
             ax.set_ylabel("Energy (eV)")
 
-        ax.set_xlabel("Position (nm)")
+        ax.set_xlabel("Growth direction (nm)")
         if title_diff is not None:
             ax.set_title(title_diff)
         else:
             ax.set_title(f"{self.name} band structure")
-        ax.legend(loc="best")
+
+        if show_legend:
+            ax.legend(loc="best")
+            ax.legend(fontsize=fontsizebase)
+
+        ax.xaxis.get_label().set_fontsize(fontsizebase)
+        ax.yaxis.get_label().set_fontsize(fontsizebase)
+        ax.title.set_fontsize(fontsizetitle)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
 
         if show:
             plt.tight_layout()
@@ -156,7 +210,7 @@ class BandStructure:
         
         if show_grid:
             plt.grid()
-
+            
         return ax
 
     def __repr__(self):
@@ -165,12 +219,7 @@ class BandStructure:
             return f"<BandStructure name={self.name}, no subbands>"
         energies = ", ".join([f"{subband.energy:.4f} eV" for subband in self.subbands])
         return f"<BandStructure name={self.name}, {n} subbands: [{energies}]>"
-    
-# class OpticalAbsorption:
-#     def __init__(self,polarization:np.ndarray):
-#         #stores optical absorption data
-#         self.transition_energies = None
-#         self.absorption_coefficients = None
+
 
 class Spectrum:
     def __init__(self, x, y, x_unit="eV", y_label="Absorption (cm⁻¹)",
@@ -182,18 +231,32 @@ class Spectrum:
         self.polarization = polarization
         self.axis = axis
 
-    def plot(self, ax=None, show=True, **kwargs):
+    def plot(self, ax=None, show=True,show_grid=False, diff_title=None, fontsizebase=18,fontsizetitle=22, **kwargs):
         if ax is None:
-            fig, ax = plt.subplots(figsize=(6, 4))
+            fig, ax = plt.subplots(figsize=(10, 6))
         label = f"{self.polarization}-{self.axis}" if self.axis else self.polarization
         ax.plot(self.x, self.y, label=label, **kwargs)
         xlabel = "Photon Energy (eV)" if self.x_unit.lower() == "ev" else "Wavelength (nm)"
         ax.set_xlabel(xlabel)
         ax.set_ylabel(self.y_label)
+
+        if diff_title is not None:
+            ax.set_title(diff_title)
         ax.legend()
+
+        #fontsize formatting
+        ax.xaxis.get_label().set_fontsize(fontsizebase)
+        ax.yaxis.get_label().set_fontsize(fontsizebase)
+        ax.legend(fontsize=fontsizebase)
+        ax.title.set_fontsize(fontsizetitle)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
+
         if show:
             plt.tight_layout()
+            if show_grid:
+                plt.grid()
             plt.show()
+
         return ax
 
     def normalize(self):
@@ -233,14 +296,23 @@ class OpticalAbsorption:
     def get_spectrum(self, label: str):
         return self.spectra[label]
 
-    def plot(self, labels=None, ax=None, show=True):
+    def plot(self, labels=None, ax=None, show=True,fontsizebase=18,fontsizetitle=22):
         if ax is None:
-            fig, ax = plt.subplots(figsize=(7, 4))
+            fig, ax = plt.subplots(figsize=(10,6))
         if labels is None:
             labels = list(self.spectra.keys())
         for label in labels:
             self.spectra[label].plot(ax=ax, show=False)
         ax.legend(title="Polarization")
+
+        #fontsize formatting
+        ax.xaxis.get_label().set_fontsize(fontsizebase)
+        ax.yaxis.get_label().set_fontsize(fontsizebase)
+        ax.legend(fontsize=fontsizebase)
+        ax.title.set_fontsize(fontsizetitle)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
+
+        
         if show:
             plt.tight_layout()
             plt.show()
@@ -309,7 +381,7 @@ class SimOut:
         self.optical_absorption.add_spectrum(photon_energy, absorption, polarization)
     
     # def plot_probabilities(self, band_name:str):
-    def plot_all_bands(self, scale=0.05, colors=None, show=True):
+    def plot_all_bands(self, scale=0.05, fontsizebase=18,fontsizetitle=22,title_diff = None, colors=None, show=True):
         """
         Plot all band structures and their subband wavefunctions in one figure.
 
@@ -328,8 +400,17 @@ class SimOut:
         for name, band in self.bands.items():
             band.plot_band(scale=scale, color=colors.get(name, None), ax=ax, show=False)
 
-        ax.set_title(f"Band Structures — {self.simname}")
+        if title_diff is not None:
+            ax.set_title(title_diff)
+        else:
+            ax.set_title(f"Band Structures — {self.simname}")
         ax.legend()
+
+        ax.xaxis.get_label().set_fontsize(fontsizebase)
+        ax.yaxis.get_label().set_fontsize(fontsizebase)
+        ax.legend(fontsize=fontsizebase)
+        ax.title.set_fontsize(fontsizetitle)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
         if show:
             plt.tight_layout()
             plt.show()
