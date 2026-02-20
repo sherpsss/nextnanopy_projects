@@ -7,9 +7,12 @@ print(f'The nextnanopy config file is stored in: {nn.config.fullpath}')
 # Specify your license folder
 #++++++++++++++++++++++++++++++++++++++++++++++++++
 user_loaner = 'sp6497_a'
-user = user_loaner
+user_ELE_V_CYTZRF4 = 'sp6497_a'
+user = user_ELE_V_CYTZRF4
 if user==user_loaner:
     path_license = r"C:\Users\sp6497_a\nextnano_outs\license_activated"
+elif user==user_ELE_V_CYTZRF4:
+    path_license = r"C:\Users\sp6497_a\OneDrive - Princeton University\nextnano_outs"
 else:
     path_license = r"C:\Users\splatt\Documents\nextnano\activated_license"
 
@@ -18,6 +21,8 @@ else:
 #++++++++++++++++++++++++++++++++++++++++++++++++++
 if user == user_loaner:
     path_nextnano_output = r"C:\Users\sp6497_a\nextnano_outs\Output"
+elif user == user_ELE_V_CYTZRF4:
+    path_nextnano_output = r"C:\Users\sp6497_a\OneDrive - Princeton University\nextnano_outs\Output"
 else:
     path_nextnano_output = r"C:\Users\splatt\Documents\nextnano\Output"            
 
@@ -25,7 +30,7 @@ else:
 # Specify your nextnano installation folder
 #++++++++++++++++++++++++++++++++++++++++++++++++++
 
-path_nextnano        = r"C:\Program Files\nextnano\2025_09_18"           # nextnano++, nextnano3 and nextnano.MSB software            
+path_nextnano        = r"C:\Program Files\nextnano\2025_12_17"           # nextnano++, nextnano3 and nextnano.MSB software            
 
 
 # NO NEED TO CHANGE THE FOLLOWING -----------------------------
