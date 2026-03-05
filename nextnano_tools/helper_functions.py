@@ -55,7 +55,7 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
     quantum_sims_path = os.path.join(outpath, bias, quantum_region)
     energy_spectrum = nn.DataFile(os.path.join(quantum_sims_path, quantum_band, 'energy_spectrum_k00000.dat'), 'nextnano++')
     probabilities = nn.DataFile(os.path.join(quantum_sims_path, quantum_band, 'probabilities_k00000.dat'), 'nextnano++')
-    transition_energies = nn.DataFile(os.path.join(quantum_sims_path, quantum_band_interactions, 'transition_energies_k00000.txt'), 'nextnano++')
+    # transition_energies = nn.DataFile(os.path.join(quantum_sims_path, quantum_band_interactions, 'transition_energies_k00000.txt'), 'nextnano++')
 
     x_edge = band_edge.coords['x'].value
     x_prob = probabilities.coords['x'].value
