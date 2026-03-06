@@ -2,13 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt 
 
 class Eigenstate:
-    def __init__(self, index:int,energy:float, prob_dist:np.ndarray):
+    def __init__(self, index:int, energy:float, prob_dist:np.ndarray, nn_index:int=None):
         #for 1 eigenenstate of whatever band is relevant
 
         self.index = index
+        self.nn_index = nn_index if nn_index is not None else index  # original nextnano 1-based index; preserved after sort_subbands
         self.energy = energy
         self.probab_dist = prob_dist
-    
+
     def __repr__(self):
         return f"<Eigenstate #index={self.index}, energy={self.energy} eV>"
     
@@ -26,6 +27,7 @@ class BandStructure:
         self.subbands = [] if subbands is None else subbands
         self.bandedges = [] if bandedges is None else bandedges
         self.x = x  # spatial axis in nm
+        self.dipole_moments = {}  # {polarization: {(nn_i, nn_j): |d|^2 [e^2·nm^2]}}
     
     def add_subband(self, eigenstate:Eigenstate):
         if not isinstance(eigenstate, Eigenstate):
@@ -55,6 +57,101 @@ class BandStructure:
             if not isinstance(edge, BandEdge):
                 raise TypeError("bandedges must be instances of BandEdge class")
             self.bandedges.append(edge)
+
+    def add_dipole_moments(self, polarization: str, data: dict):
+        """
+        Store intraband dipole matrix elements for one polarization.
+
+        Parameters
+        ----------
+        polarization : str
+            Label matching the nextnano output filename suffix (e.g. 'TM_z', 'component_x').
+        data : dict
+            {(nn_i, nn_j): |<i|eps·d|j>|^2  [e^2·nm^2]}  keyed by nextnano 1-based indices.
+        """
+        self.dipole_moments[polarization] = data
+
+    def get_dipole_matrix(self, polarization: str) -> np.ndarray:
+        """
+        Return an (N x N) matrix of |dipole|^2 [e^2·nm^2] in the current subband order.
+        Rows/cols follow self.subbands order (respects any prior sort_subbands call).
+        """
+        if polarization not in self.dipole_moments:
+            raise KeyError(f"No dipole moments stored for polarization '{polarization}'. "
+                           f"Available: {list(self.dipole_moments.keys())}")
+        n = len(self.subbands)
+        mat = np.zeros((n, n))
+        d = self.dipole_moments[polarization]
+        for row, si in enumerate(self.subbands):
+            for col, sj in enumerate(self.subbands):
+                mat[row, col] = d.get((si.nn_index, sj.nn_index), 0.0)
+        return mat
+
+    def get_dipole_vs_energy(self, polarization: str, upward_only=True):
+        """
+        Return dipole transition data for all subband pairs.
+
+        Returns
+        -------
+        dE_vals : np.ndarray  transition energies [eV]
+        d_vals  : np.ndarray  |dipole|^2 [e²·nm²]
+        labels  : list[str]   'i→j' label strings
+        """
+        d_mat = self.get_dipole_matrix(polarization)
+        dE_vals, d_vals, labels = [], [], []
+        for i, si in enumerate(self.subbands):
+            for j, sj in enumerate(self.subbands):
+                if i == j:
+                    continue
+                dE = sj.energy - si.energy
+                if upward_only and dE <= 0:
+                    continue
+                dE_vals.append(dE)
+                d_vals.append(d_mat[i, j])
+                labels.append(f"{si.index}→{sj.index}")
+        return np.array(dE_vals), np.array(d_vals), labels
+
+    def plot_dipole_vs_energy(self, polarization: str, upward_only=True, label_transitions=False,
+                              ax=None, show=True, fontsizebase=18, fontsizetitle=22,
+                              title_diff=None, **kwargs):
+        """
+        Stem plot of |dipole|^2 vs. transition energy for all subband pairs.
+
+        Parameters
+        ----------
+        polarization : str
+            Key matching a stored dipole polarization (e.g. 'TM_z', 'component_x').
+        upward_only : bool
+            If True (default), only show transitions i→j where E_j > E_i.
+        label_transitions : bool
+            If True, annotate each stem with 'i→j' subband labels.
+        """
+        dE_vals, d_vals, labels = self.get_dipole_vs_energy(polarization, upward_only=upward_only)
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(10, 5))
+
+        markerline, _, _ = ax.stem(dE_vals, d_vals, **kwargs)
+        markerline.set_markersize(5)
+
+        if label_transitions:
+            for dE, d, lbl in zip(dE_vals, d_vals, labels):
+                ax.annotate(lbl, (dE, d), textcoords="offset points",
+                            xytext=(0, 4), ha='center', fontsize=fontsizebase - 6)
+
+        ax.set_xlabel("Transition energy ΔE (eV)")
+        ax.set_ylabel(r"$|d_{ij}|^2$ [e²·nm²]")
+        ax.set_title(title_diff or f"{self.name} dipole moments — {polarization}")
+        ax.xaxis.get_label().set_fontsize(fontsizebase)
+        ax.yaxis.get_label().set_fontsize(fontsizebase)
+        ax.title.set_fontsize(fontsizetitle)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
+
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+        return ax
 
     # def remove_bandedge(self, *edge_names):
     #     for n in edge_names:
@@ -331,6 +428,7 @@ class SimOut:
         self.hole_Fermi_level = None
         self.bands ={}
         self.optical_absorption = OpticalAbsorption() #only included in some sims
+        self.interband_dipole_moments = {}  # {polarization: {(nn_i, nn_j): |d|^2 [e^2·nm^2]}}
     
     def add_band(self, band):
         #pass in either bandstructure type or just new string type
@@ -377,6 +475,42 @@ class SimOut:
         return CB_mesh - VB_mesh
 
     
+    def add_interband_dipole_moments(self, polarization: str, data: dict):
+        """
+        Store interband (CB-VB) dipole matrix elements for one polarization.
+
+        Parameters
+        ----------
+        polarization : str
+            Label matching the nextnano output filename suffix.
+        data : dict
+            {(nn_i, nn_j): |<i|eps·d|j>|^2  [e^2·nm^2]}  where i and j may be
+            from different bands; nextnano 1-based indices.
+        """
+        self.interband_dipole_moments[polarization] = data
+
+    def get_interband_dipole_matrix(self, polarization: str) -> np.ndarray:
+        """
+        Return an (N_CB x N_VB) matrix of |dipole|^2 [e^2·nm^2].
+        Rows = CB subbands, cols = VB subbands, both in current subband order.
+        Looks up both (nn_i_CB, nn_j_VB) and (nn_j_VB, nn_i_CB) orderings.
+        """
+        if 'CB' not in self.bands or 'VB' not in self.bands:
+            raise ValueError("Both CB and VB bands must exist for interband dipole matrix.")
+        if polarization not in self.interband_dipole_moments:
+            raise KeyError(f"No interband dipole moments for polarization '{polarization}'. "
+                           f"Available: {list(self.interband_dipole_moments.keys())}")
+        cb_subbands = self.bands['CB'].subbands
+        vb_subbands = self.bands['VB'].subbands
+        mat = np.zeros((len(cb_subbands), len(vb_subbands)))
+        d = self.interband_dipole_moments[polarization]
+        for row, si in enumerate(cb_subbands):
+            for col, sj in enumerate(vb_subbands):
+                val = d.get((si.nn_index, sj.nn_index),
+                            d.get((sj.nn_index, si.nn_index), 0.0))
+                mat[row, col] = val
+        return mat
+
     def add_absorption_spectrum(self, photon_energy: np.ndarray, absorption: np.ndarray, polarization: str = None):
         self.optical_absorption.add_spectrum(photon_energy, absorption, polarization)
     

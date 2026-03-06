@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 import nextnanopy as nn
 from .simstructs import SimOut, BandStructure,Eigenstate,BandEdge,OpticalAbsorption,Spectrum
 
@@ -42,9 +43,158 @@ def build_optical_absorption(optics_path,absorption_files): #built to assume onl
     return absorption_obj
                     
 
-def build_output(outpath, quantum_region, quantum_band, quantum_band_interactions, bias, VB_cutoff, well_w):
+_EV_TO_WAVENUM = 8065.544  # cm⁻¹ per eV
+
+
+def plot_absorption_with_dipoles(band, absorption_spectrum, polarization,
+                                  upward_only=True, label_transitions=False,
+                                  numin=None, numax=None,
+                                  ax=None, show=True, fontsizebase=18, fontsizetitle=22,
+                                  title_diff=None):
+    """
+    Dual-axis plot: absorption spectrum (left axis) and ISB dipole |d|^2 stems (right axis).
+    X-axis is in wavenumbers [cm⁻¹].
+
+    Parameters
+    ----------
+    band : BandStructure
+    absorption_spectrum : Spectrum
+        Must have x in eV (x_unit='eV') or already in cm⁻¹.
+    polarization : str
+        Dipole polarization key (e.g. 'TM_z').
+
+    Returns
+    -------
+    ax, ax2 : left and right Axes
+    """
+    dE_eV, d_vals, labels = band.get_dipole_vs_energy(polarization, upward_only=upward_only)
+    dE_wavenum = dE_eV * _EV_TO_WAVENUM
+
+    spec_x = absorption_spectrum.x
+    if absorption_spectrum.x_unit.lower() == 'ev':
+        spec_x_wavenum = spec_x * _EV_TO_WAVENUM
+    else:
+        spec_x_wavenum = spec_x  # assume already cm⁻¹
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(10, 5))
+
+    # Left axis: absorption spectrum
+    pol_label = f"{absorption_spectrum.polarization}-{absorption_spectrum.axis}" if absorption_spectrum.axis else absorption_spectrum.polarization
+    ax.plot(spec_x_wavenum, absorption_spectrum.y, color='steelblue', label=pol_label)
+    ax.set_xlabel("Wavenumber (cm⁻¹)")
+    ax.set_ylabel(absorption_spectrum.y_label, color='steelblue')
+    ax.tick_params(axis='y', labelcolor='steelblue')
+
+    # Right axis: dipole strengths
+    ax2 = ax.twinx()
+    markerline, _, _ = ax2.stem(dE_wavenum, d_vals, linefmt='C1-', markerfmt='C1o', basefmt=' ')
+    markerline.set_markersize(5)
+    ax2.set_ylabel(r"$|d_{ij}|^2$ [e²·nm²]", color='C1')
+    ax2.tick_params(axis='y', labelcolor='C1')
+
+    if label_transitions:
+        for dE, d, lbl in zip(dE_wavenum, d_vals, labels):
+            ax2.annotate(lbl, (dE, d), textcoords="offset points",
+                         xytext=(0, 4), ha='center', fontsize=fontsizebase - 6)
+
+    ax.set_title(title_diff or f"{band.name} absorption & dipole strengths — {polarization}")
+    ax.xaxis.get_label().set_fontsize(fontsizebase)
+    ax.yaxis.get_label().set_fontsize(fontsizebase)
+    ax2.yaxis.get_label().set_fontsize(fontsizebase)
+    ax.title.set_fontsize(fontsizetitle)
+    ax.tick_params(axis='both', labelsize=fontsizebase)
+    ax2.tick_params(axis='y', labelsize=fontsizebase)
+
+    if numin is not None or numax is not None:
+        ax.set_xlim(numin, numax)
+        # Autoscale both y-axes to the visible x range
+        xlo = numin if numin is not None else spec_x_wavenum.min()
+        xhi = numax if numax is not None else spec_x_wavenum.max()
+
+        mask_spec = (spec_x_wavenum >= xlo) & (spec_x_wavenum <= xhi)
+        if mask_spec.any():
+            ylo = absorption_spectrum.y[mask_spec].min()
+            yhi = absorption_spectrum.y[mask_spec].max()
+            pad = 0.05 * abs(yhi - ylo) if yhi != ylo else 0.1 * abs(yhi)
+            ax.set_ylim(ylo - pad, yhi + pad)
+
+        mask_dip = (dE_wavenum >= xlo) & (dE_wavenum <= xhi)
+        if mask_dip.any():
+            ax2.set_ylim(0, d_vals[mask_dip].max() * 1.2)
+
+    if show:
+        plt.tight_layout()
+        plt.show()
+
+    return ax, ax2
+
+
+def _load_dipole_moments(interactions_path, non_degen_E):
+    """
+    Parse dipole moment matrix element .txt files from the quantum interactions folder.
+    Only pairs where both indices are in non_degen_E (kept states) are included.
+
+    Returns
+    -------
+    isb_dipoles : dict  {polarization: {(nn_i, nn_j): |d|^2 [e^2·nm^2]}}
+        Intraband pairs (both states in the same band).
+    interband_dipoles : dict  {polarization: {(nn_i, nn_j): |d|^2 [e^2·nm^2]}}
+        Interband pairs (states in different bands).
+    """
+    if not os.path.isdir(interactions_path):
+        return {}, {}
+
+    isb_dipoles = {}
+    interband_dipoles = {}
+
+    for fname in os.listdir(interactions_path):
+        if 'dipole_moment_matrix_elements_k00000' not in fname.lower() or not fname.endswith('.txt'):
+            continue
+
+        polarization = fname.replace('dipole_moment_matrix_elements_k00000_', '').replace('.txt', '')
+        filepath = os.path.join(interactions_path, fname)
+
+        try:
+            data = np.loadtxt(filepath, skiprows=1)
+        except Exception as e:
+            print(f"Warning: could not load dipole file '{fname}': {e}")
+            continue
+
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        isb_dipoles[polarization] = {}
+        interband_dipoles[polarization] = {}
+
+        for row in data:
+            i, j = int(row[0]), int(row[1])
+            abs2 = float(row[3])
+
+            if i not in non_degen_E or j not in non_degen_E:
+                continue
+
+            band_i = non_degen_E[i][0]
+            band_j = non_degen_E[j][0]
+
+            if band_i == band_j:
+                isb_dipoles[polarization][(i, j)] = abs2
+            else:
+                interband_dipoles[polarization][(i, j)] = abs2
+
+    return isb_dipoles, interband_dipoles
+
+
+def build_output(outpath, quantum_region, quantum_band, quantum_band_interactions, bias, VB_cutoff, well_w, model='kp'):
     """
     Parses Nextnano output files and organizes results into SimOut -> BandStructure -> Eigenstate hierarchy.
+
+    Parameters
+    ----------
+    model : str
+        'kp'    : k·p model — eigenvalues are doubly degenerate at k=0 (spin), so every
+                  other eigenvalue is skipped.
+        'gamma' : Gamma-band model — no spin degeneracy; all eigenvalues are used directly.
     """
 
     # Create the top-level simulation container
@@ -80,15 +230,22 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
 
     #load in energies and then use those energy indices to load in probabilities so I can have the non-shifted probabilities
 
-    #skip every other eigenvalue to get non-degenerate states
-    degen_energies = energy_spectrum.variables['Energy'].value
-    non_degen_inds = list(range(1, len(degen_energies), 2)) #adding 1 to get the ususal way subbands are indexed
-    for non_degen_ind in non_degen_inds:
-        Eeig = degen_energies[non_degen_ind]
+    energies = energy_spectrum.variables['Energy'].value
+    if model == 'kp':
+        # kp: spin-degenerate pairs at k=0 — keep one from each pair (1-based, every other)
+        selected_inds = list(range(1, len(energies), 2))
+    elif model == 'gamma':
+        # Gamma: no spin degeneracy — use all eigenvalues (1-based to match psi file naming)
+        selected_inds = list(range(1, len(energies) + 1))
+    else:
+        raise ValueError(f"Unknown model '{model}'. Use 'kp' or 'gamma'.")
+
+    for ind in selected_inds:
+        Eeig = energies[ind - 1]  # energy array is 0-based; psi indices are 1-based
         if Eeig < VB_cutoff:
-            non_degen_E[non_degen_ind] = ('VB', Eeig)
+            non_degen_E[ind] = ('VB', Eeig)
         else:
-            non_degen_E[non_degen_ind] = ('CB', Eeig)
+            non_degen_E[ind] = ('CB', Eeig)
 
     # Loop again to collect corresponding probability distributions
     for psi in probabilities.variables:
@@ -99,6 +256,22 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
                 CB.add_subband(Eigenstate(idx, energy, psi.value))
             else:
                 VB.add_subband(Eigenstate(idx, energy, psi.value))
+
+    # Load dipole moment matrix elements if present in the interactions folder
+    interactions_path = os.path.join(quantum_sims_path, quantum_band_interactions)
+    isb_dipoles, interband_dipoles = _load_dipole_moments(interactions_path, non_degen_E)
+
+    for polarization, d in isb_dipoles.items():
+        cb_d = {(i, j): v for (i, j), v in d.items() if non_degen_E[i][0] == 'CB' and non_degen_E[j][0] == 'CB'}
+        vb_d = {(i, j): v for (i, j), v in d.items() if non_degen_E[i][0] == 'VB' and non_degen_E[j][0] == 'VB'}
+        if cb_d:
+            CB.add_dipole_moments(polarization, cb_d)
+        if vb_d:
+            VB.add_dipole_moments(polarization, vb_d)
+
+    for polarization, d in interband_dipoles.items():
+        if d:
+            sim.add_interband_dipole_moments(polarization, d)
 
     # Add band structures to simulation output
     sim.add_band(CB)
