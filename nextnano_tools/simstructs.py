@@ -240,6 +240,8 @@ class BandStructure:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=(8, 5))
+        else:
+            fig = ax.get_figure()
 
         color = color or ('dodgerblue' if self.name == 'CB' else 'crimson')
 
@@ -301,14 +303,14 @@ class BandStructure:
         ax.title.set_fontsize(fontsizetitle)
         ax.tick_params(axis='both', labelsize=fontsizebase)
 
+        if show_grid:
+            ax.grid(True)
+
         if show:
             plt.tight_layout()
             plt.show()
-        
-        if show_grid:
-            plt.grid()
-            
-        return ax
+
+        return fig, ax
 
     def __repr__(self):
         n = len(self.subbands)
@@ -548,7 +550,7 @@ class SimOut:
         if show:
             plt.tight_layout()
             plt.show()
-        return ax
+        return fig, ax
     
 
 
