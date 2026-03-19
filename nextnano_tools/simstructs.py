@@ -216,6 +216,34 @@ class BandStructure:
     def define_x(self, x:np.ndarray): #if I don't define when I pass it in
         self.x = x
 
+    def calc_ldos(self, eVbias_values: np.ndarray, eVmod: float = 0.0) -> np.ndarray:
+        """
+        Compute the local density of states as a function of position and bias energy.
+
+        LDOS(eVbias, z) = sum of probab_dist for all subbands with energy <= eVbias.
+
+        Parameters
+        ----------
+        eVbias_values : array-like
+            Applied bias energies in eV.
+
+        Returns
+        -------
+        ldos : np.ndarray, shape (len(eVbias_values), len(self.x))
+            Rows correspond to eVbias, columns to z (growth direction).
+        """
+        if self.x is None:
+            raise ValueError("Spatial axis x is not defined for this BandStructure.")
+        # eVbias_values = np.asarray(eVbias_values) #already passed in as an array
+        n_bias = len(eVbias_values)
+        n_z = len(self.x)
+        ldos = np.zeros((n_bias, n_z))
+        for i, eVbias in enumerate(eVbias_values):
+            for subband in self.subbands:
+                if subband.energy <= (eVbias + eVmod):  # the deltaE allows for broadening from Vmod
+                    ldos[i] += subband.probab_dist
+        return ldos
+
     def plot_band(self, scale=0.05, fontsizebase = 18,fontsizetitle = 22,color=None, ax=None, show=True, show_legend =True, show_grid=False,title_diff=None,normalize_y=False):
         """
         Plot band edges and subband probability distributions.

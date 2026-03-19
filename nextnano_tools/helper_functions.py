@@ -130,6 +130,60 @@ def plot_absorption_with_dipoles(band, absorption_spectrum, polarization,
     return ax, ax2
 
 
+def plot_ldos(band: BandStructure, ldos: np.ndarray, eVbias_values: np.ndarray, ax=None, show=True,
+              cmap='inferno', fontsizebase=18, fontsizetitle=22,
+              title_diff=None, colorbar_label='LDOS [a.u.]', **kwargs):
+    """
+    Plot a heatmap of a pre-computed LDOS matrix.
+
+    x-axis: growth direction (nm)
+    y-axis: eVbias (eV)
+    color:  LDOS value
+
+    Parameters
+    ----------
+    band : BandStructure
+        Provides the spatial axis (band.x).
+    ldos : np.ndarray, shape (len(eVbias_values), len(band.x))
+        Output of band.calc_ldos.
+    eVbias_values : array-like
+        Bias energy values in eV corresponding to rows of ldos.
+    ax : matplotlib.axes.Axes, optional
+    show : bool
+    cmap : str
+    title_diff : str, optional
+        Override the default title.
+    **kwargs
+        Passed to ax.pcolormesh.
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+    """
+    eVbias_values = np.asarray(eVbias_values)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.get_figure()
+
+    mesh = ax.pcolormesh(band.x, eVbias_values, ldos, cmap=cmap, shading='auto', **kwargs)
+    cbar = fig.colorbar(mesh, ax=ax)
+    cbar.set_label(colorbar_label, fontsize=fontsizebase)
+    cbar.ax.tick_params(labelsize=fontsizebase)
+
+    ax.set_xlabel("Growth direction [nm]", fontsize=fontsizebase)
+    ax.set_ylabel("eV [eV]", fontsize=fontsizebase)
+    ax.set_title(title_diff or f"LDOS — {band.name}", fontsize=fontsizetitle)
+    ax.tick_params(axis='both', labelsize=fontsizebase)
+
+    if show:
+        plt.tight_layout()
+        plt.show()
+
+    return ax
+
+
 def _load_dipole_moments(interactions_path, non_degen_E):
     """
     Parse dipole moment matrix element .txt files from the quantum interactions folder.
