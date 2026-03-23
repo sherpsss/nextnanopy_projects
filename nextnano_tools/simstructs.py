@@ -216,7 +216,7 @@ class BandStructure:
     def define_x(self, x:np.ndarray): #if I don't define when I pass it in
         self.x = x
 
-    def calc_ldos(self, eVbias_values: np.ndarray, eVmod: float = 0.0) -> np.ndarray:
+    def calc_ldos(self, eVbias_values: np.ndarray, deltaE: float = 0.0) -> np.ndarray:
         """
         Compute the local density of states as a function of position and bias energy.
 
@@ -240,7 +240,7 @@ class BandStructure:
         ldos = np.zeros((n_bias, n_z))
         for i, eVbias in enumerate(eVbias_values):
             for subband in self.subbands:
-                if subband.energy <= (eVbias + eVmod):  # the deltaE allows for broadening from Vmod
+                if subband.energy <= (eVbias + deltaE):  # the deltaE allows for broadening from Vmod
                     ldos[i] += subband.probab_dist
         return ldos
 
