@@ -254,6 +254,26 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
     # Create the top-level simulation container
     sim = SimOut(simname=f"sweep_w{well_w}")
 
+    # Load input variables
+    vars_path = os.path.join(outpath, 'variables_input.txt')
+    if os.path.isfile(vars_path):
+        with open(vars_path) as vf:
+            for line in vf:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                name, _, raw = line.partition('=')
+                name = name.strip().lstrip('$')
+                raw = raw.strip().strip('"')
+                try:
+                    val = int(raw)
+                except ValueError:
+                    try:
+                        val = float(raw)
+                    except ValueError:
+                        val = raw
+                sim.variables[name] = val
+
     # Load band edge data
     band_edge = nn.DataFile(os.path.join(outpath, bias, 'bandedges.dat'), 'nextnano++')
     quantum_sims_path = os.path.join(outpath, bias, quantum_region)

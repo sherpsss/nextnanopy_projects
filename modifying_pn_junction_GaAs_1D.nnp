@@ -1,0 +1,149 @@
+!TEXT 
+    ========================================================================================================================= 
+    "GaAs p-n junction" 
+    https://www.nextnano.com/docu/nextnanoplus/tutorials/1D_pn_junction.html
+    ------------------------------------------------------------------------------------------------------------------------- 
+    This input file is provided to you by nextnano GmbH (https://www.nextnano.com)
+    The last revision of this input file was done on 2025-12-05
+    Compatible with nextnano++ 2.4.23
+    ========================================================================================================================= 
+    References: 
+    ------------------------------------------------------------------------------------------------------------------------- 
+    Semiconductor Optoelectronic Devices: Introduction to Physics and Simulation
+    J. Piprek
+    Elsevier (2003)
+    https://doi.org/10.1016/C2009-0-22633-X
+    ========================================================================================================================= 
+!ENDTEXT
+
+#***************************************************************************!
+#                                                                           !
+# This is an input file for nextnano++ to calculate the band edges of a     !
+# simple pn-junction with classical charge densities.      
+# 20260326 SRP modifying for                  !
+#                                                                           !
+#***************************************************************************!
+run{
+    poisson{}
+}
+
+global{ 
+    simulate1D{}
+    
+    temperature = 300.0         # Kelvin
+    
+    substrate{ name = "GaAs" }
+    
+    crystal_zb{
+        x_hkl = [1, 0, 0]
+        y_hkl = [0, 1, 0]
+    }
+}
+
+impurities{
+    #    donor{ name = "n-type" energy = 0.027   degeneracy = 2 }      
+    # acceptor{ name = "p-type" energy = 0.0058  degeneracy = 4 }
+    donor{ 
+        name = "n-type" 
+        degeneracy = 2 
+        fully_ionized{}
+    }    
+    acceptor{ 
+        name = "p-type" 
+        degeneracy = 4 
+        fully_ionized{}
+    }    
+}
+
+contacts{
+    ohmic{ 
+        name = "source" 
+        bias = 0.0 
+    }
+    ohmic{ 
+        name = "drain"  
+        bias = 0.0 
+    }
+}
+
+structure{
+    output_region_index{ boxes = no }
+    output_material_index{ boxes = no }
+    output_alloy_composition{ boxes = no }
+    output_impurities{ boxes = no }
+    
+    region{
+        everywhere{}
+        binary{ name = "GaAs" }
+    }
+    region{
+        line{ x = [0.0, 10.0] }
+        binary{ name = "GaAs" }
+        contact { name = source }
+    }
+    region{
+        line{ x = [10.0, 310.0] }
+        binary{ name = "GaAs" }
+    }
+    region{
+        line{ x = [310.0, 320.0] }
+        binary{ name = "GaAs" }
+        contact { name = drain }
+    }
+  
+    region{
+        line{
+            x = [ 0.0, 160.0]
+            # x = [10.0, 160.0]     # doping must not start at 10.0
+        }
+        doping{
+            constant{
+                name = "p-type"
+                conc =  0.5e18
+            }
+        }
+    }
+    region{                          
+        line{
+            # x = [160.0, 310.0]    # doping must not end at 310.0
+            x = [160.0, 320.0]
+        }
+        doping{
+            constant{
+                name = "n-type"
+                conc = 2.0e18
+            }
+        }
+    }
+}
+
+grid{
+    xgrid{
+        line{ pos = 0.0       spacing = 2.0  }
+        line{ pos = 10.0      spacing = 1.0  }
+        line{ pos = 100.0     spacing = 0.5  }
+        line{ pos = 140.0     spacing = 0.25 }
+        line{ pos = 180.0     spacing = 0.25 }
+        line{ pos = 220.0     spacing = 0.5  }
+        line{ pos = 310.0     spacing = 1.0  }
+        line{ pos = 320.0     spacing = 2.0  }
+    }
+}
+
+classical{
+    Gamma{} 
+    HH{}
+    LH{}
+    SO{}
+    
+    output_bandedges{ averaged = no}
+    output_carrier_densities{}
+    output_ionized_dopant_densities{}
+    output_intrinsic_density{}
+}
+
+poisson{
+    charge_neutral{}
+    output_potential{}
+    output_electric_field{}
+}

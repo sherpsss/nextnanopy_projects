@@ -459,6 +459,7 @@ class SimOut:
         self.bands ={}
         self.optical_absorption = OpticalAbsorption() #only included in some sims
         self.interband_dipole_moments = {}  # {polarization: {(nn_i, nn_j): |d|^2 [e^2·nm^2]}}
+        self.variables = {}  # {name: int or float} from variables_input.txt
     
     def add_band(self, band):
         #pass in either bandstructure type or just new string type
