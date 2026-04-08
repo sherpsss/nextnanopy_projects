@@ -152,11 +152,6 @@ class BandStructure:
             plt.show()
 
         return ax
-
-    # def remove_bandedge(self, *edge_names):
-    #     for n in edge_names:
-    #         if n in self.bandedges:
-    #             self.bandedges.pop(n)
     
     def calc_intersubband_transitions(self, upward_only=False):
         Ei, Ef = np.meshgrid(self.get_energies(), self.get_energies())
@@ -312,9 +307,9 @@ class BandStructure:
             ax.plot(self.x, psi2_norm * scale + E, color=color, lw=1.2)
 
         if normalize_y:
-            ax.set_ylabel("Energy relative to Band Edge (eV)")
+            ax.set_ylabel("Energy relative to Band Edge [eV]")
         else:
-            ax.set_ylabel("Energy (eV)")
+            ax.set_ylabel("Energy relative to $E_F$ [eV]")
 
         ax.set_xlabel("Growth direction (nm)")
         if title_diff is not None:
@@ -448,7 +443,6 @@ class OpticalAbsorption:
     def __repr__(self):
         return f"<OpticalAbsorption: {list(self.spectra.keys())}>"
 
-
     
 class SimOut:
     def __init__(self, simname:str):
@@ -581,8 +575,6 @@ class SimOut:
             plt.show()
         return fig, ax
     
-
-
     def __repr__(self):
         lines = [f"<SimOut simname={self.simname}>"]
         if not self.bands:
