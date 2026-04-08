@@ -1,5 +1,16 @@
 import numpy as np
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+
+_DEFAULT_BAND_COLORS = {
+    'CB':    'dodgerblue',
+    'VB':    'crimson',
+    'Gamma': 'dodgerblue',
+    'X':     'steelblue',
+    'L':     'cornflowerblue',
+    'HH':    'crimson',
+    'LH':    'darkorange',
+    'SO':    'mediumpurple',
+}
 
 class Eigenstate:
     def __init__(self, index:int, energy:float, prob_dist:np.ndarray, nn_index:int=None):
@@ -266,7 +277,7 @@ class BandStructure:
         else:
             fig = ax.get_figure()
 
-        color = color or ('dodgerblue' if self.name == 'CB' else 'crimson')
+        color = color or _DEFAULT_BAND_COLORS.get(self.name, 'gray')
 
         # --------------------------------------------
         # Compute energy offset if normalize_y=True
@@ -484,20 +495,29 @@ class SimOut:
         for band in self.bands.values():
             band.sort_subbands(decreasing=decreasing)
     
-    def calc_interband_transitions(self):
+    def calc_interband_transitions(self, upper='CB', lower='VB'):
         """
-        Compute interband transition energies between VB and CB.
+        Compute interband transition energies between two bands.
+
+        Parameters
+        ----------
+        upper : str
+            Name of the upper (higher energy) band. Default 'CB'.
+            For 1-band model use e.g. 'Gamma'.
+        lower : str
+            Name of the lower (lower energy) band. Default 'VB'.
+            For 1-band model use e.g. 'HH' or 'LH'.
 
         Returns
         -------
         transitions : 2D numpy array
-            transitions[i, j] = CB_i - VB_j
+            transitions[i, j] = upper_i - lower_j
         """
-        if 'CB' not in self.bands or 'VB' not in self.bands:
-            raise ValueError("Both CB and VB bands must exist for interband transitions.")
+        if upper not in self.bands or lower not in self.bands:
+            raise ValueError(f"Both '{upper}' and '{lower}' bands must exist. Available: {list(self.bands.keys())}")
 
-        VB_mesh, CB_mesh = np.meshgrid(self.bands['VB'].get_energies(), self.bands['CB'].get_energies())
-        return CB_mesh - VB_mesh
+        lower_mesh, upper_mesh = np.meshgrid(self.bands[lower].get_energies(), self.bands[upper].get_energies())
+        return upper_mesh - lower_mesh
 
     
     def add_interband_dipole_moments(self, polarization: str, data: dict):
@@ -514,19 +534,26 @@ class SimOut:
         """
         self.interband_dipole_moments[polarization] = data
 
-    def get_interband_dipole_matrix(self, polarization: str) -> np.ndarray:
+    def get_interband_dipole_matrix(self, polarization: str, upper='CB', lower='VB') -> np.ndarray:
         """
-        Return an (N_CB x N_VB) matrix of |dipole|^2 [e^2·nm^2].
-        Rows = CB subbands, cols = VB subbands, both in current subband order.
-        Looks up both (nn_i_CB, nn_j_VB) and (nn_j_VB, nn_i_CB) orderings.
+        Return an (N_upper x N_lower) matrix of |dipole|^2 [e^2·nm^2].
+        Rows = upper band subbands, cols = lower band subbands, both in current subband order.
+        Looks up both (nn_i_upper, nn_j_lower) and (nn_j_lower, nn_i_upper) orderings.
+
+        Parameters
+        ----------
+        upper : str
+            Name of the upper band. Default 'CB'. For 1-band use e.g. 'Gamma'.
+        lower : str
+            Name of the lower band. Default 'VB'. For 1-band use e.g. 'HH' or 'LH'.
         """
-        if 'CB' not in self.bands or 'VB' not in self.bands:
-            raise ValueError("Both CB and VB bands must exist for interband dipole matrix.")
+        if upper not in self.bands or lower not in self.bands:
+            raise ValueError(f"Both '{upper}' and '{lower}' bands must exist. Available: {list(self.bands.keys())}")
         if polarization not in self.interband_dipole_moments:
             raise KeyError(f"No interband dipole moments for polarization '{polarization}'. "
                            f"Available: {list(self.interband_dipole_moments.keys())}")
-        cb_subbands = self.bands['CB'].subbands
-        vb_subbands = self.bands['VB'].subbands
+        cb_subbands = self.bands[upper].subbands
+        vb_subbands = self.bands[lower].subbands
         mat = np.zeros((len(cb_subbands), len(vb_subbands)))
         d = self.interband_dipole_moments[polarization]
         for row, si in enumerate(cb_subbands):
@@ -553,11 +580,12 @@ class SimOut:
         show : bool
             Whether to call plt.show().
         """
-        colors = colors or {'CB': 'dodgerblue', 'VB': 'crimson'}
+        colors = colors or {}
         fig, ax = plt.subplots(figsize=(10, 6))
 
         for name, band in self.bands.items():
-            band.plot_band(scale=scale, color=colors.get(name, None), ax=ax, show=False)
+            color = colors.get(name) or _DEFAULT_BAND_COLORS.get(name, 'gray')
+            band.plot_band(scale=scale, color=color, ax=ax, show=False)
 
         if title_diff is not None:
             ax.set_title(title_diff)

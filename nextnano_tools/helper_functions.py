@@ -45,6 +45,10 @@ def build_optical_absorption(optics_path,absorption_files): #built to assume onl
 
 _EV_TO_WAVENUM = 8065.544  # cm⁻¹ per eV
 
+# 1-band model: bands classified as CB or VB by directory name
+_ONEBAND_CB_BANDS = ['Gamma', 'X', 'L']
+_ONEBAND_VB_BANDS = ['HH', 'LH', 'SO']
+
 
 def plot_absorption_with_dipoles(band, absorption_spectrum, polarization,
                                   upward_only=True, label_transitions=False,
@@ -239,17 +243,38 @@ def _load_dipole_moments(interactions_path, non_degen_E):
     return isb_dipoles, interband_dipoles
 
 
-def build_output(outpath, quantum_region, quantum_band, quantum_band_interactions, bias, VB_cutoff, well_w, model='kp'):
+def build_output(outpath, quantum_region, bias, well_w, model='kp',
+                 quantum_band=None, quantum_band_interactions=None, VB_cutoff=None):
     """
     Parses Nextnano output files and organizes results into SimOut -> BandStructure -> Eigenstate hierarchy.
 
     Parameters
     ----------
+    outpath : str
+        Path to the simulation output directory.
+    quantum_region : str
+        Relative path to the quantum region folder (e.g. r'Quantum\\quantum_region').
+    bias : str
+        Bias subfolder name (e.g. 'bias_00000').
+    well_w : float
+        Well width label used to name the SimOut object.
     model : str
-        'kp'    : k·p model — eigenvalues are doubly degenerate at k=0 (spin), so every
-                  other eigenvalue is skipped.
-        'gamma' : Gamma-band model — no spin degeneracy; all eigenvalues are used directly.
+        'kp'    : k·p multiband model (kp8, kp6, etc.) — doubly spin-degenerate at k=0;
+                  every other eigenvalue skipped. Produces sim.bands['CB'] and sim.bands['VB'].
+                  Requires quantum_band, quantum_band_interactions, and VB_cutoff.
+        '1band' : Single-band model. Per-band directories are auto-discovered from:
+                  CB bands: Gamma, X, L.  VB bands: HH, LH, SO.
+                  No spin degeneracy. Produces one BandStructure per discovered band
+                  (e.g. sim.bands['Gamma'], sim.bands['HH'], sim.bands['LH']).
+    quantum_band : str, optional
+        Band folder name (e.g. 'kp8'). Required for model='kp'.
+    quantum_band_interactions : str, optional
+        Interactions folder name (e.g. 'kp8_kp8'). Required for model='kp'.
+    VB_cutoff : float, optional
+        Energy threshold (eV) separating CB from VB states. Required for model='kp'.
     """
+    if model == 'kp' and any(v is None for v in (quantum_band, quantum_band_interactions, VB_cutoff)):
+        raise ValueError("model='kp' requires quantum_band, quantum_band_interactions, and VB_cutoff.")
 
     # Create the top-level simulation container
     sim = SimOut(simname=f"sweep_w{well_w}")
@@ -274,105 +299,119 @@ def build_output(outpath, quantum_region, quantum_band, quantum_band_interaction
                         val = raw
                 sim.variables[name] = val
 
-    # Load band edge data
+    # Load band edge data (shared across all models)
     band_edge = nn.DataFile(os.path.join(outpath, bias, 'bandedges.dat'), 'nextnano++')
-    quantum_sims_path = os.path.join(outpath, bias, quantum_region)
-    energy_spectrum = nn.DataFile(os.path.join(quantum_sims_path, quantum_band, 'energy_spectrum_k00000.dat'), 'nextnano++')
-    probabilities = nn.DataFile(os.path.join(quantum_sims_path, quantum_band, 'probabilities_k00000.dat'), 'nextnano++')
-    # transition_energies = nn.DataFile(os.path.join(quantum_sims_path, quantum_band_interactions, 'transition_energies_k00000.txt'), 'nextnano++')
-
     x_edge = band_edge.coords['x'].value
-    x_prob = probabilities.coords['x'].value
-
-    CB = BandStructure('CB',x=x_prob)
-    VB = BandStructure('VB',x=x_prob)
-
-    Gamma = BandEdge('Gamma', band_edge.variables['Gamma'].value, x_edge)
-    HH = BandEdge('HH', band_edge.variables['HH'].value, x_edge)
-    LH = BandEdge('LH', band_edge.variables['LH'].value, x_edge)
-
-    
-    CB.add_bandedge(Gamma)
-    VB.add_bandedge(HH)
-    VB.add_bandedge(LH)
+    quantum_sims_path = os.path.join(outpath, bias, quantum_region)
 
     sim.electron_Fermi_level = np.mean(band_edge.variables['electron_Fermi_level'].value)
     sim.hole_Fermi_level = np.mean(band_edge.variables['hole_Fermi_level'].value)
 
-    # Dictionary to store energy classification: {psi_index: ('CB' or 'VB', energy_value)}
-    non_degen_E = {}
+    # Classical band edges from bandedges.dat — available in all models
+    gamma_edge = BandEdge('Gamma', band_edge.variables['Gamma'].value, x_edge)
+    hh_edge = BandEdge('HH', band_edge.variables['HH'].value, x_edge)
+    lh_edge = BandEdge('LH', band_edge.variables['LH'].value, x_edge)
 
-    #load in energies and then use those energy indices to load in probabilities so I can have the non-shifted probabilities
-
-    energies = energy_spectrum.variables['Energy'].value
+    # ------------------------------------------------------------------
+    # MODEL: kp — single band folder, CB/VB split by VB_cutoff
+    # ------------------------------------------------------------------
     if model == 'kp':
-        # kp: spin-degenerate pairs at k=0 — keep one from each pair (1-based, every other)
+        probabilities = nn.DataFile(os.path.join(quantum_sims_path, quantum_band, 'probabilities_k00000.dat'), 'nextnano++')
+        energy_spectrum = nn.DataFile(os.path.join(quantum_sims_path, quantum_band, 'energy_spectrum_k00000.dat'), 'nextnano++')
+        x_prob = probabilities.coords['x'].value
+
+        CB = BandStructure('CB', x=x_prob)
+        VB = BandStructure('VB', x=x_prob)
+        CB.add_bandedge(gamma_edge)
+        VB.add_bandedge(hh_edge)
+        VB.add_bandedge(lh_edge)
+
+        energies = energy_spectrum.variables['Energy'].value
+        # kp: spin-degenerate pairs at k=0 — keep one from each pair
         selected_inds = list(range(1, len(energies), 2))
-    elif model == 'gamma':
-        # Gamma: no spin degeneracy — use all eigenvalues (1-based to match psi file naming)
-        selected_inds = list(range(1, len(energies) + 1))
+
+        non_degen_E = {}
+        for ind in selected_inds:
+            Eeig = energies[ind - 1]
+            non_degen_E[ind] = ('VB', Eeig) if Eeig < VB_cutoff else ('CB', Eeig)
+
+        for psi in probabilities.variables:
+            idx = int(psi.name.split('_')[-1])
+            if idx in non_degen_E:
+                band_label, energy = non_degen_E[idx]
+                target = CB if band_label == 'CB' else VB
+                target.add_subband(Eigenstate(idx, energy, psi.value))
+
+        interactions_path = os.path.join(quantum_sims_path, quantum_band_interactions)
+        isb_dipoles, interband_dipoles = _load_dipole_moments(interactions_path, non_degen_E)
+
+        for polarization, d in isb_dipoles.items():
+            cb_d = {(i, j): v for (i, j), v in d.items() if non_degen_E[i][0] == 'CB' and non_degen_E[j][0] == 'CB'}
+            vb_d = {(i, j): v for (i, j), v in d.items() if non_degen_E[i][0] == 'VB' and non_degen_E[j][0] == 'VB'}
+            if cb_d:
+                CB.add_dipole_moments(polarization, cb_d)
+            if vb_d:
+                VB.add_dipole_moments(polarization, vb_d)
+
+        for polarization, d in interband_dipoles.items():
+            if d:
+                sim.add_interband_dipole_moments(polarization, d)
+
+        sim.add_band(CB)
+        sim.add_band(VB)
+
+    # ------------------------------------------------------------------
+    # MODEL: 1band — one BandStructure per discovered band directory
+    # ------------------------------------------------------------------
+    elif model == '1band':
+        # Classical band edges available for these bands in bandedges.dat
+        _edge_map = {'Gamma': gamma_edge, 'HH': hh_edge, 'LH': lh_edge}
+
+        for band_name in _ONEBAND_CB_BANDS + _ONEBAND_VB_BANDS:
+            band_dir = os.path.join(quantum_sims_path, band_name)
+            if not os.path.isdir(band_dir):
+                continue
+
+            energy_spectrum = nn.DataFile(os.path.join(band_dir, 'energy_spectrum_k00000.dat'), 'nextnano++')
+            probabilities = nn.DataFile(os.path.join(band_dir, 'probabilities_k00000.dat'), 'nextnano++')
+            x_prob = probabilities.coords['x'].value
+
+            band_struct = BandStructure(band_name, x=x_prob)
+            if band_name in _edge_map:
+                band_struct.add_bandedge(_edge_map[band_name])
+
+            energies = energy_spectrum.variables['Energy'].value
+            # Build local index→energy map (1-based, no degeneracy skip)
+            local_map = {idx + 1: E for idx, E in enumerate(energies)}
+
+            for psi in probabilities.variables:
+                local_idx = int(psi.name.split('_')[-1])
+                if local_idx in local_map:
+                    band_struct.add_subband(Eigenstate(local_idx, local_map[local_idx], psi.value))
+
+            # Load per-band dipoles from e.g. HH_HH/ folder
+            interactions_dir = os.path.join(quantum_sims_path, f"{band_name}_{band_name}")
+            if os.path.isdir(interactions_dir):
+                # Pass local_map as non_degen_E — all states share the same band label
+                local_non_degen = {idx: (band_name, E) for idx, E in local_map.items()}
+                isb_dipoles, _ = _load_dipole_moments(interactions_dir, local_non_degen)
+                for polarization, d in isb_dipoles.items():
+                    if d:
+                        band_struct.add_dipole_moments(polarization, d)
+
+            sim.add_band(band_struct)
+
     else:
-        raise ValueError(f"Unknown model '{model}'. Use 'kp' or 'gamma'.")
+        raise ValueError(f"Unknown model '{model}'. Use 'kp' or '1band'.")
 
-    for ind in selected_inds:
-        Eeig = energies[ind - 1]  # energy array is 0-based; psi indices are 1-based
-        if Eeig < VB_cutoff:
-            non_degen_E[ind] = ('VB', Eeig)
-        else:
-            non_degen_E[ind] = ('CB', Eeig)
-
-    # Loop again to collect corresponding probability distributions
-    for psi in probabilities.variables:
-        idx = int(psi.name.split('_')[-1])
-        if idx in non_degen_E:
-            band_name, energy = non_degen_E[idx]
-            if band_name == 'CB':
-                CB.add_subband(Eigenstate(idx, energy, psi.value))
-            else:
-                VB.add_subband(Eigenstate(idx, energy, psi.value))
-
-    # Load dipole moment matrix elements if present in the interactions folder
-    interactions_path = os.path.join(quantum_sims_path, quantum_band_interactions)
-    isb_dipoles, interband_dipoles = _load_dipole_moments(interactions_path, non_degen_E)
-
-    for polarization, d in isb_dipoles.items():
-        cb_d = {(i, j): v for (i, j), v in d.items() if non_degen_E[i][0] == 'CB' and non_degen_E[j][0] == 'CB'}
-        vb_d = {(i, j): v for (i, j), v in d.items() if non_degen_E[i][0] == 'VB' and non_degen_E[j][0] == 'VB'}
-        if cb_d:
-            CB.add_dipole_moments(polarization, cb_d)
-        if vb_d:
-            VB.add_dipole_moments(polarization, vb_d)
-
-    for polarization, d in interband_dipoles.items():
-        if d:
-            sim.add_interband_dipole_moments(polarization, d)
-
-    # Add band structures to simulation output
-    sim.add_band(CB)
-    sim.add_band(VB)
-
-        # --- Optical absorption spectra ---
+    # --- Optical absorption spectra (shared) ---
     optics_path = os.path.join(outpath, bias, "OpticsQuantum", "quantum_region")
-    print(optics_path)
-
     if os.path.isdir(optics_path):
-        print("reached optics path")
-        all_files = os.listdir(optics_path)
-        print(all_files)
-        absorption_files =[]
-        for f in all_files:
-            lower_case = f.lower()
-            print(lower_case)
-            rules = ["absorption_coeff_spectrum" in lower_case,"ev" in lower_case,lower_case.endswith(".dat")]
-            print(rules)
-            if all(rules):
-                absorption_files.append(f)
-
-        print(absorption_files)
-
+        absorption_files = [
+            f for f in os.listdir(optics_path)
+            if "absorption_coeff_spectrum" in f.lower() and "ev" in f.lower() and f.lower().endswith(".dat")
+        ]
         if absorption_files:
-            absorption_populated = build_optical_absorption(optics_path,absorption_files)
-
-            sim.optical_absorption = absorption_populated
+            sim.optical_absorption = build_optical_absorption(optics_path, absorption_files)
 
     return sim
