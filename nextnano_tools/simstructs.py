@@ -250,7 +250,8 @@ class BandStructure:
                     ldos[i] += subband.probab_dist
         return ldos
 
-    def plot_band(self, scale=0.05, fontsizebase = 18,fontsizetitle = 22,color=None, ax=None, show=True, show_legend =True, show_grid=False,title_diff=None,normalize_y=False):
+    def plot_band(self, scale=0.05, fontsizebase=18, fontsizetitle=22, color=None, prob_alpha=0.45,
+                 ax=None, show=True, show_legend=True, show_grid=False, title_diff=None, normalize_y=False):
         """
         Plot band edges and subband probability distributions.
 
@@ -258,8 +259,12 @@ class BandStructure:
         ----------
         scale : float
             Vertical scale factor for normalized probability amplitudes.
-        color : str
-            Optional color for subband wavefunctions.
+        color : str or None
+            If None (default), subbands are colored by increasing energy using the
+            'plasma' colormap. Pass an explicit color string to override.
+        prob_alpha : float
+            Alpha (opacity) for probability distribution lines. Default 0.45 so
+            they are visually distinct from the solid energy-level lines.
         ax : matplotlib.axes.Axes
             Optional Axes object to plot into.
         show : bool
@@ -277,13 +282,20 @@ class BandStructure:
         else:
             fig = ax.get_figure()
 
-        color = color or _DEFAULT_BAND_COLORS.get(self.name, 'gray')
+        # ------------------------------------------------------------------
+        # Build per-subband colors
+        # ------------------------------------------------------------------
+        use_winter = color is None
+        if use_winter:
+            cmap = plt.colormaps['winter']
+            subbands_by_energy = sorted(self.subbands, key=lambda s: s.energy)
+            n = len(subbands_by_energy)
+            energy_rank = {id(s): i for i, s in enumerate(subbands_by_energy)}
 
         # --------------------------------------------
         # Compute energy offset if normalize_y=True
         # --------------------------------------------
         if normalize_y:
-            # collect all band edge energies for this band
             all_edge_vals = []
             for edge in self.bandedges:
                 all_edge_vals.extend(edge.energy)
@@ -308,21 +320,27 @@ class BandStructure:
         for subband in self.subbands:
             E = subband.energy - E_min
 
-            # plot energy as dashed horizontal line
-            ax.plot(self.x, np.full_like(self.x, E), ls='--',
-                    label=f'{self.name} {subband.index}')
+            if use_winter:
+                rank = energy_rank[id(subband)]
+                c = cmap(rank / max(n - 1, 1))
+            else:
+                c = color
 
-            # probability distribution
+            # energy level as solid horizontal line
+            ax.plot(self.x, np.full_like(self.x, E), ls='--', color=c,
+                    label=f'{self.name} {subband.index}', lw=2.0)
+
+            # probability distribution — same color, semi-transparent
             psi2 = subband.probab_dist
             psi2_norm = psi2 / np.max(np.abs(psi2)) if np.max(np.abs(psi2)) != 0 else psi2
-            ax.plot(self.x, psi2_norm * scale + E, color=color, lw=1.2)
+            ax.plot(self.x, psi2_norm * scale + E, color=c, alpha=prob_alpha, lw=1.5)
 
         if normalize_y:
             ax.set_ylabel("Energy relative to Band Edge [eV]")
         else:
             ax.set_ylabel("Energy relative to $E_F$ [eV]")
 
-        ax.set_xlabel("Growth direction (nm)")
+        ax.set_xlabel("Growth direction [nm]")
         if title_diff is not None:
             ax.set_title(title_diff)
         else:
@@ -567,7 +585,7 @@ class SimOut:
         self.optical_absorption.add_spectrum(photon_energy, absorption, polarization)
     
     # def plot_probabilities(self, band_name:str):
-    def plot_all_bands(self, scale=0.05, fontsizebase=18,fontsizetitle=22,title_diff = None, colors=None, show=True):
+    def plot_all_bands(self, scale=0.05, fontsizebase=18,fontsizetitle=22,title_diff = None, colors=None, show=True,add_title=True,add_legend=True):
         """
         Plot all band structures and their subband wavefunctions in one figure.
 
@@ -585,17 +603,21 @@ class SimOut:
 
         for name, band in self.bands.items():
             color = colors.get(name) or _DEFAULT_BAND_COLORS.get(name, 'gray')
-            band.plot_band(scale=scale, color=color, ax=ax, show=False)
+            band.plot_band(scale=scale, color=color, ax=ax, show=False,show_legend=add_legend)
 
-        if title_diff is not None:
-            ax.set_title(title_diff)
-        else:
-            ax.set_title(f"Band Structures — {self.simname}")
-        ax.legend()
+        if add_title:
+            if title_diff is not None:
+                ax.set_title(title_diff)
+            else:
+                ax.set_title(f"Band Structures — {self.simname}")
+
+        if add_legend:
+            ax.legend()
+            ax.legend(fontsize=fontsizebase)
 
         ax.xaxis.get_label().set_fontsize(fontsizebase)
         ax.yaxis.get_label().set_fontsize(fontsizebase)
-        ax.legend(fontsize=fontsizebase)
+
         ax.title.set_fontsize(fontsizetitle)
         ax.tick_params(axis='both', labelsize=fontsizebase)
         if show:
