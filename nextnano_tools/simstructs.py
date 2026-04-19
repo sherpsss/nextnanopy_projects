@@ -30,7 +30,36 @@ class BandEdge:
         self.name = name
         self.energy = energy  #energy profile
         self.x = x  #x coords
-    
+
+    def plot(self, ax=None, show=True, color=None, label=None, offset=0.0,
+             fontsizebase=18, **kwargs):
+        """
+        Plot this band edge profile.
+
+        Parameters
+        ----------
+        offset : float
+            Subtract this value from energy before plotting (used by plot_band
+            for normalize_y). Default 0.0.
+        """
+        if ax is None:
+            _, ax = plt.subplots(figsize=(8, 4))
+
+        c = color or _DEFAULT_BAND_COLORS.get(self.name, 'gray')
+        lbl = label if label is not None else self.name
+        ax.plot(self.x, self.energy - offset, color=c, label=lbl, **kwargs)
+
+        ax.set_xlabel("Growth direction [nm]", fontsize=fontsizebase)
+        ax.set_ylabel("Energy relative to $E_F$ [eV]", fontsize=fontsizebase)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
+
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+        return ax
+
+
 class BandStructure:
     def __init__(self, name:str,subbands = None, bandedges = None,x=None):
         #stores eigenstates in CB or VB subband
@@ -311,8 +340,7 @@ class BandStructure:
         # Plot band edges (with optional normalization)
         # --------------------------------------------
         for edge in self.bandedges:
-            y = edge.energy - E_min
-            ax.plot(edge.x, y, label=f"{edge.name}")
+            edge.plot(ax=ax, show=False, offset=E_min, fontsizebase=fontsizebase)
 
         # --------------------------------------------
         # Plot each eigenstate energy + wavefunction
@@ -337,10 +365,10 @@ class BandStructure:
 
         if normalize_y:
             ax.set_ylabel("Energy relative to Band Edge [eV]")
-        else:
-            ax.set_ylabel("Energy relative to $E_F$ [eV]")
+        # else:
+        #     ax.set_ylabel("Energy relative to $E_F$ [eV]")
 
-        ax.set_xlabel("Growth direction [nm]")
+        # ax.set_xlabel("Growth direction [nm]")
         if title_diff is not None:
             ax.set_title(title_diff)
         else:
@@ -473,6 +501,48 @@ class OpticalAbsorption:
         return f"<OpticalAbsorption: {list(self.spectra.keys())}>"
 
     
+_KNOWN_DENSITY_COLORS = {
+    'Electron_density':         'mediumblue',
+    'Hole_density':             'crimson',
+    'Ionized_donor_density':    'darkorange',
+    'Ionized_acceptor_density': 'mediumpurple',
+}
+
+
+class Density:
+    def __init__(self, density_name: str, x: np.ndarray, density: np.ndarray, units: str = '1e18 cm⁻³'):
+        self.density_name = density_name
+        self.x = x
+        self.density = density
+        self.units = units
+
+    def plot(self, log_scale=False, ax=None, show=True,
+             fontsizebase=18, fontsizetitle=22, title_diff=None):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(8, 4))
+
+        color = _KNOWN_DENSITY_COLORS.get(self.density_name, 'gray')
+
+        ax.plot(self.x, self.density, color=color, lw=2.0)
+
+        if log_scale:
+            ax.set_yscale('log')
+
+        ax.set_xlabel("Growth direction [nm]", fontsize=fontsizebase)
+        ax.set_ylabel(f"{self.density_name} [{self.units}]", fontsize=fontsizebase)
+        ax.set_title(title_diff or self.density_name, fontsize=fontsizetitle)
+        ax.tick_params(axis='both', labelsize=fontsizebase)
+
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+        return ax
+
+    def __repr__(self):
+        return f"<Density name={self.density_name}, {len(self.x)} points, units={self.units}>"
+
+
 class SimOut:
     def __init__(self, simname:str):
         #represents 1 full sim result
@@ -483,6 +553,7 @@ class SimOut:
         self.optical_absorption = OpticalAbsorption() #only included in some sims
         self.interband_dipole_moments = {}  # {polarization: {(nn_i, nn_j): |d|^2 [e^2·nm^2]}}
         self.variables = {}  # {name: int or float} from variables_input.txt
+        self.densities = {}  # {density_name: Density} — populated from all density .dat files
     
     def add_band(self, band):
         #pass in either bandstructure type or just new string type
@@ -624,7 +695,59 @@ class SimOut:
             plt.tight_layout()
             plt.show()
         return fig, ax
-    
+
+    def plot_density(self, band_names, density, log_scale=False,
+                     ax=None, show=True, fontsizebase=18, fontsizetitle=22,
+                     title_diff=None):
+        """
+        Plot band edge(s) on the left axis and a named density on the right axis.
+
+        Parameters
+        ----------
+        band_names : str or list of str
+            Band name(s) whose edges to plot on the left axis.
+        density : str
+            Key in self.densities (e.g. 'Electron_density', 'n-Si-in-AlAs').
+        log_scale : bool
+            If True, right axis uses log scale.
+        """
+        if isinstance(band_names, str):
+            band_names = [band_names]
+
+        if density not in self.densities:
+            raise ValueError(f"Density '{density}' not found. Available: {list(self.densities.keys())}")
+        d = self.densities[density]
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(10, 5))
+
+        # Left axis: band edges
+        for name in band_names:
+            if name not in self.bands:
+                raise ValueError(f"Band '{name}' not found. Available: {list(self.bands.keys())}")
+            for edge in self.bands[name].bandedges:
+                edge.plot(ax=ax, show=False, fontsizebase=fontsizebase)
+
+        ax.tick_params(axis='both', labelsize=fontsizebase)
+        ax.legend(fontsize=fontsizebase)
+
+        # Right axis: density
+        ax2 = ax.twinx()
+        color = _KNOWN_DENSITY_COLORS.get(d.density_name, 'gray')
+        ax2.plot(d.x, d.density, color=color, lw=2.0, alpha=0.7)
+        ax2.set_ylabel(f"{d.density_name} [{d.units}]", fontsize=fontsizebase, color=color)
+        ax2.tick_params(axis='y', labelsize=fontsizebase, labelcolor=color)
+        if log_scale:
+            ax2.set_yscale('log')
+
+        ax.set_title(title_diff or f"Band edges & {d.density_name} — {self.simname}", fontsize=fontsizetitle)
+
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+        return ax, ax2
+
     def __repr__(self):
         lines = [f"<SimOut simname={self.simname}>"]
         if not self.bands:
