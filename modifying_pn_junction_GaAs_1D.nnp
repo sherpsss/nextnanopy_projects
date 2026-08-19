@@ -20,9 +20,15 @@
 #                                                                           !
 # This is an input file for nextnano++ to calculate the band edges of a     !
 # simple pn-junction with classical charge densities.      
-# 20260326 SRP modifying for                  !
+# 20260326 SRP modifying for n-n case                  !
 #                                                                           !
 #***************************************************************************!
+$n_doped_len = 300
+$intrinsic_len = 300
+$source_len = 10
+$drain_len = 10
+$buffer = 50.0
+
 run{
     poisson{}
 }
@@ -77,41 +83,41 @@ structure{
         binary{ name = "GaAs" }
     }
     region{
-        line{ x = [0.0, 10.0] }
+        line{ x = [0.0, $source_len] }
         binary{ name = "GaAs" }
         contact { name = source }
     }
     region{
-        line{ x = [10.0, 310.0] }
+        line{ x = [$source_len, $source_len+$n_doped_len+$intrinsic_len] }
         binary{ name = "GaAs" }
     }
     region{
-        line{ x = [310.0, 320.0] }
+        line{ x = [$source_len+$n_doped_len+$intrinsic_len,$source_len+$n_doped_len+$intrinsic_len+$drain_len] }
         binary{ name = "GaAs" }
         contact { name = drain }
     }
   
     region{
         line{
-            x = [ 0.0, 160.0]
-            # x = [10.0, 160.0]     # doping must not start at 10.0
+            x = [ 0.0, $source_len+$intrinsic_len]
+#             x = [10.0, 160.0]     # doping must not start at 10.0
         }
         doping{
             constant{
-                name = "p-type"
-                conc =  0.5e18
+                name = "n-type"
+                conc =  1.0e16
             }
         }
     }
     region{                          
         line{
             # x = [160.0, 310.0]    # doping must not end at 310.0
-            x = [160.0, 320.0]
+            x = [$source_len+$intrinsic_len, $source_len+$intrinsic_len+$n_doped_len+$drain_len]
         }
         doping{
             constant{
                 name = "n-type"
-                conc = 2.0e18
+                conc = 1.5e18
             }
         }
     }
@@ -120,13 +126,13 @@ structure{
 grid{
     xgrid{
         line{ pos = 0.0       spacing = 2.0  }
-        line{ pos = 10.0      spacing = 1.0  }
-        line{ pos = 100.0     spacing = 0.5  }
-        line{ pos = 140.0     spacing = 0.25 }
-        line{ pos = 180.0     spacing = 0.25 }
-        line{ pos = 220.0     spacing = 0.5  }
-        line{ pos = 310.0     spacing = 1.0  }
-        line{ pos = 320.0     spacing = 2.0  }
+        line{ pos = $source_len      spacing = 1.0  }
+#        line{ pos = 100.0     spacing = 0.5  }
+        line{ pos = $source_len+$intrinsic_len-$buffer     spacing = 0.1 }
+        line{ pos = $source_len+$intrinsic_len+$buffer     spacing = 0.1 }
+#        line{ pos = 220.0     spacing = 0.5  }
+        line{ pos = $source_len+$intrinsic_len+$n_doped_len     spacing = 1.0  }
+        line{ pos = $source_len+$intrinsic_len+$n_doped_len+$drain_len     spacing = 2.0  }
     }
 }
 
